@@ -1,36 +1,59 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# seven degree pos
 
-## Getting Started
+cloud pos for bakery / food truck.
 
-First, run the development server:
+stack: next.js + supabase + vercel (later)
+
+## roles
+
+- admin -> `/admin`
+- cashier -> `/pos`
+- kitchen -> `/kds`
+
+## phase 1 status
+
+done in code:
+
+- next.js app
+- core sql schema + sample menu seed
+- login page
+- role based redirects and route protection
+- empty home screens for pos / kds / admin
+
+you still need to do in the browsers:
+
+1. create supabase project
+2. run sql files
+3. create 3 auth users + profiles
+4. put keys in `.env.local`
+5. create github repo and push
+
+full click-by-click steps: see `SETUP.md`
+
+## run locally
 
 ```bash
+npm install
+cp .env.example .env.local
+# paste your supabase url and anon key into .env.local
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+open http://localhost:3000
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## important folders
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- `supabase/` sql for database
+- `src/app/login` sign in
+- `src/app/pos` cashier screen
+- `src/app/kds` kitchen screen
+- `src/app/admin` admin screen
+- `src/lib/auth` role rules
+- `src/lib/supabase` supabase clients
+- `src/types/database.types.ts` typescript shapes for tables
 
-## Learn More
+## teammate flow
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1. push your branch / main to github
+2. teammate pulls
+3. after they push, you pull and ask cursor: what did he finish?
