@@ -42,10 +42,17 @@ phase 1 foundation is done on `main`:
 - empty home shells for `/admin`, `/pos`, `/kds`
 - docs: `README.md`, `SETUP.md`, `GITHUB-ACCOUNTS.md`
 
+phase 2 is done on top of it, and tested live against the real supabase project:
+
+- `/pos` real cart, modifiers, payment, writes `orders` + `order_items`
+- `/kds` realtime kitchen board with the status pipeline
+- verified end to end: cashier order showed up on the kitchen board on its own
+  and walked `pending -> preparing -> ready -> completed` without a refresh
+
+details, gotchas and the live test results: `PHASE-2-HANDOFF.md`.
+
 not done yet:
 
-- real pos cart / payments
-- real kds realtime ui
 - inventory, recipes, waste
 - admin reports / menu editor ui
 - thermal printing
@@ -183,8 +190,8 @@ open http://localhost:3000
 ### phase 1 — done
 foundation: schema, auth, role homes
 
-### phase 2 — next (core money + kitchen)
-build:
+### phase 2 — done (core money + kitchen)
+built:
 
 1. `/pos`
    - load categories/products/modifiers from supabase

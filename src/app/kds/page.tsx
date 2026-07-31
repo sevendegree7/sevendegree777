@@ -1,16 +1,27 @@
 import { RoleShell } from "@/components/role-shell";
+import { fetchKitchenOrders } from "@/lib/kds/queries";
+import { createClient } from "@/lib/supabase/server";
 
-// kitchen home - realtime kds comes in phase 2
-export default function KdsPage() {
+import { KdsScreen } from "./kds-screen";
+
+// kitchen home - first paint is server rendered, then realtime takes over
+export default async function KdsPage() {
+  const supabase = await createClient();
+  const { orders, error } = await fetchKitchenOrders(supabase);
+
   return (
     <RoleShell title="kitchen display" roleLabel="kitchen">
-      <div className="rounded-2xl bg-white p-6 shadow-sm">
-        <h2 className="text-xl font-medium">kitchen screen ready</h2>
-        <p className="mt-2 max-w-xl text-stone-600">
-          phase 1 only checks login and role redirect. next this page will show
-          live orders and status buttons for the kitchen.
-        </p>
-      </div>
+      {error ? (
+        <div className="rounded-2xl bg-white p-6 shadow-sm">
+          <h2 className="text-xl font-medium">orders did not load</h2>
+          <p className="mt-2 text-stone-600">{error}</p>
+          <p className="mt-2 text-sm text-stone-500">
+            check the supabase keys in .env.local and that schema.sql was run.
+          </p>
+        </div>
+      ) : (
+        <KdsScreen initialOrders={orders} />
+      )}
     </RoleShell>
   );
 }
