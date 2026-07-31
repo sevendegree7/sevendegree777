@@ -42,10 +42,16 @@ phase 1 foundation is done on `main`:
 - empty home shells for `/admin`, `/pos`, `/kds`
 - docs: `README.md`, `SETUP.md`, `GITHUB-ACCOUNTS.md`
 
+phase 2 is code complete on top of it:
+
+- `/pos` real cart, modifiers, payment, writes `orders` + `order_items`
+- `/kds` realtime kitchen board with the status pipeline
+- still needs one live test against a real supabase project
+
+details, gotchas and the live test steps: `PHASE-2-HANDOFF.md`.
+
 not done yet:
 
-- real pos cart / payments
-- real kds realtime ui
 - inventory, recipes, waste
 - admin reports / menu editor ui
 - thermal printing
