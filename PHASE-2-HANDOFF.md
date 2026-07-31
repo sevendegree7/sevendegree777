@@ -1,7 +1,7 @@
 # phase 2 handoff — track a (`/pos`) and track b (`/kds`) both done
 
-last updated: track b built on top of track a. phase 2 is code complete and
-waiting on one live test against a real supabase project.
+last updated: both tracks built, and the live test against the real supabase
+project passed. phase 2 is done.
 
 read `HANDOFF.md` first for project context. this file only covers what
 phase 2 changed and what phase 3 needs to know.
@@ -220,38 +220,42 @@ the safety net instead of polling.
 | kds helpers | 24 checks passed: allowed moves, undo, rejected moves, waiting time, fifo order |
 | kds board render | rendered in a browser with fake tickets: three lanes, fifo order, late badge, modifier chips, notes, empty-ticket state, no hydration errors |
 | route protection | `/pos` and `/kds` still redirect signed-out users to `/login` |
-
-**not verified: anything against a real supabase project.** this machine has
-no supabase credentials, so `.env.local` still holds the placeholder values
-from `.env.example`. realtime, rls and the order write path are type-checked
-and reviewed but have never run against a live database.
+| live test against real supabase | passed, see section 7 |
 
 ---
 
-## 7) first thing to do before trusting phase 2
+## 7) the live test (passed)
 
-1. put real keys in `.env.local`
-2. run `supabase/schema.sql` and `supabase/seed.sql`
-3. confirm realtime is on for `orders` in the supabase dashboard
-   (database -> replication). the `alter publication` line in `schema.sql`
-   does this, but check it, because the whole board depends on it
-4. sign in as a cashier on one device, kitchen on another
-5. send one order from `/pos`
-6. it should appear in `new` on `/kds` within a second, without a refresh
-7. walk it `start` -> `mark ready` -> `picked up` and watch it leave the board
-8. in the supabase table editor, confirm `orders` has one row and
-   `order_items` has the right lines with `selected_modifiers` populated
+run against the real supabase project, signed in as admin, `/pos` in one tab
+and `/kds` in another, neither tab reloaded during the test:
 
-if the ticket does not appear live but shows up after tapping `refresh`, the
-problem is realtime (step 3), not the board.
+| step | result |
+|------|--------|
+| menu loads from the db | 4 categories, 8 products, modifiers on the right ones |
+| modifier popup, qty 2, `extra icing` | `add · 100.00 egp`, so `(45 + 5) x 2` is right |
+| cart with a second product | total `120.00 egp` |
+| confirm payment (dine in, cash) | order written, cart cleared |
+| ticket on `/kds` | appeared in `new` on its own, no refresh: `#261621a9`, `dine in · 3 items`, amber `extra icing` chip, blue item note, blue `order note: table 4` |
+| `start` | moved to preparing |
+| `mark ready` | moved to ready |
+| `undo` from ready | back to preparing |
+| `picked up` | left the board, all three lanes empty again |
+| second order, one line | arrived live, read `1 item` not `1 items` |
+| console errors, either tab | none |
+
+so the definition of done in `HANDOFF.md` section 12 is met: products from db,
+cart and modifiers, pay writes the order, kds updates live without refresh,
+`pending -> preparing -> ready` works, role redirects intact.
+
+if a ticket ever stops appearing live but shows up after tapping `refresh`, the
+problem is realtime, not the board — check database -> replication in the
+supabase dashboard, the publication must include `orders`.
 
 ---
 
 ## 8) what is left
 
-phase 2 is done once the live test above passes.
-
-next is phase 3 per `HANDOFF.md`:
+phase 2 is done. next is phase 3 per `HANDOFF.md`:
 
 - `inventory_items`, `recipes`, waste logs
 - bom deduct on sale
