@@ -255,21 +255,15 @@ supabase dashboard, the publication must include `orders`.
 
 ## 8) what is left
 
-phase 2 is done. next is phase 3 per `HANDOFF.md`:
+phase 2 is done. phase 3 inventory/admin is done — see `PHASE-3-HANDOFF.md`.
 
-- `inventory_items`, `recipes`, waste logs
-- bom deduct on sale
-- waste / freebies
-- admin menu price editor + basic reports
-
-`/admin` is still the phase 1 shell.
+**next: phase 4** — see `PHASE-4-HANDOFF.md` (harden + offline lan sync).
 
 ---
 
 ## 9) smaller things worth knowing
 
-- `/pos` hides products where `is_available` is false. there is no admin ui to
-  toggle that yet, so it is a direct db edit for now
+- `/pos` hides products where `is_available` is false. admin menu can toggle this now (phase 3)
 - the cart merges a repeat tap of the same product with the same extras and the
   same note into one line with a higher quantity
 - `/kds` shows the ticket id short form (`#0d5a9f1e`), the same slice the pos

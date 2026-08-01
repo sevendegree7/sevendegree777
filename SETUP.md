@@ -41,6 +41,8 @@ never commit `.env.local`
 4. run
 5. open `supabase/seed.sql`
 6. paste and run (sample menu)
+7. open `supabase/phase3.sql` and run
+8. open `supabase/phase3-seed.sql` and run (inventory + recipes)
 
 if realtime line fails because it was already added, ignore that one error and continue.
 

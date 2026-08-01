@@ -2,7 +2,7 @@
 
 give this whole file to claude code (or cursor) as project context before coding.
 
-last updated: phase 1 pushed to github (`main`).
+last updated: phase 3 on main; teammate starts phase 4 (`PHASE-4-HANDOFF.md`).
 
 ---
 
@@ -49,14 +49,20 @@ phase 2 is done on top of it, and tested live against the real supabase project:
 - verified end to end: cashier order showed up on the kitchen board on its own
   and walked `pending -> preparing -> ready -> completed` without a refresh
 
+phase 3 code is in the repo (admin + inventory + bom deduct):
+
+- run `supabase/phase3.sql` then `supabase/phase3-seed.sql` on your project
+- details: `PHASE-3-HANDOFF.md`
+
 details, gotchas and the live test results: `PHASE-2-HANDOFF.md`.
+phase 3 inventory / admin details: `PHASE-3-HANDOFF.md`.
 
 not done yet:
 
-- inventory, recipes, waste
-- admin reports / menu editor ui
 - thermal printing
 - offline lan sync
+- reversing stock on late cancels
+- deeper food-cost analytics
 
 ---
 
@@ -210,17 +216,22 @@ built:
 
 done when: cashier creates order -> kitchen sees it live -> can mark ready.
 
-### phase 3 — inventory + admin control
-- `inventory_items`, `recipes`, waste logs
-- bom deduct on sale
-- waste / freebies
-- admin menu price editor + basic reports
+### phase 3 — done (inventory + admin control)
+- `inventory_items`, `recipes`, `modifier_recipes`, `waste_logs`
+- bom deduct on sale via `deduct_stock_for_order`
+- waste / restock / menu price+availability
+- admin reports (basic)
+- see `PHASE-3-HANDOFF.md`
 
-### phase 4 — harden + offline
+### phase 4 — next (harden + offline)
+full teammate brief: **`PHASE-4-HANDOFF.md`**
+
 - touch qa on lenovo/phone
+- connection banners online/offline/syncing
 - local lan offline: pos/kds work on same network
 - when online again, sync orders into supabase using `client_id`
-- reprint, double-submit guards, clear offline banner
+- reuse `createOrder` on sync so stock deduct stays one path
+- reprint optional; do not break phase 2/3 online flows
 
 ### phase 5 — cloud go-live
 - vercel deploy + prod env
@@ -257,25 +268,25 @@ required behavior:
 
 ## 10) suggested teammate split
 
-good parallel after phase 1:
+phase 2 (done): pos vs kds.
 
-- person a: `/pos` create order flow
-- person b: `/kds` realtime + status buttons
+phase 4 (now):
 
-contract between them = `orders` + `order_items` + status enum already in schema.
+- person a: offline local store + sync to supabase via `client_id` / `createOrder`
+- person b: kds lan feed + online/offline banners + touch harden
+
+full instructions: `PHASE-4-HANDOFF.md`.
 
 ---
 
-## 11) what teammate should do first
+## 11) what teammate should do now
 
-1. get github invite to `sevendegree7/sevendegree777`
-2. clone repo
-3. create `.env.local` with supabase keys (ask owner)
-4. `npm install` then `npm run dev`
-5. login with a test role account
-6. confirm redirects work
-7. start phase 2 on an agreed lane (pos or kds)
-8. branch + pr (do not invent new db shapes without syncing)
+1. `git pull origin main`
+2. keep `.env.local` from owner (shared supabase)
+3. run `supabase/phase3.sql` + `phase3-seed.sql` if not already run
+4. smoke test admin + one sale + stock drop + kds
+5. read `PHASE-4-HANDOFF.md`
+6. branch from main for phase 4 work + open pr
 
 ---
 
@@ -288,20 +299,23 @@ contract between them = `orders` + `order_items` + status enum already in schema
 - status pipeline works: pending -> preparing -> ready
 - cashier/kitchen/admin still land on correct screens
 
+(phase 2 met — see `PHASE-2-HANDOFF.md` live test.)
+
 ---
 
 ## 13) prompt starter for claude code
 
-copy/paste:
+### phase 3 already done — use phase 4 prompt
 
 ```text
 you are working on seven degree pos (next.js + supabase).
-read HANDOFF.md and supabase/schema.sql first.
+read HANDOFF.md, PHASE-2-HANDOFF.md, PHASE-3-HANDOFF.md, and PHASE-4-HANDOFF.md first.
+phases 1-3 are done. implement phase 4 for [harden | offline-lan | sync].
 do not redesign the schema or role system.
-phase 1 is done. implement phase 2 for [POS or KDS].
-use existing enums and tables exactly.
+reuse orders.client_id for offline dedupe; prefer createOrder when syncing.
 keep comments simple lowercase.
 explain each new file briefly when you create it.
+do not break online pos/kds/admin.
 ```
 
-replace `[POS or KDS]` with the assigned task.
+replace `[harden | offline-lan | sync]` with the assigned task.

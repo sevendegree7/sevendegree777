@@ -230,5 +230,15 @@ export async function createOrder(
     .update({ status: "pending" })
     .eq("id", order.id);
 
+  // pull raw materials for this sale (idempotent in postgres)
+  const { error: deductError } = await supabase.rpc("deduct_stock_for_order", {
+    p_order_id: order.id,
+  });
+
+  if (deductError) {
+    // sale still stands - stock can be fixed by admin. do not cancel the ticket.
+    console.error("stock deduct failed", deductError.message);
+  }
+
   return { ok: true, orderId: order.id, total };
 }

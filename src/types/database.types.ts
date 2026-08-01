@@ -19,6 +19,16 @@ export type OrderStatus =
   | "completed"
   | "cancelled";
 
+export type WasteReason =
+  | "burnt"
+  | "dropped"
+  | "expired"
+  | "spoiled"
+  | "remake"
+  | "other";
+
+export type InventoryUnit = "g" | "ml" | "pcs";
+
 export type Profile = {
   id: string;
   name: string;
@@ -70,8 +80,45 @@ export type Order = {
   status: OrderStatus;
   notes: string | null;
   created_by: string | null;
+  // true after bom deduct ran for this order
+  stock_deducted: boolean;
   created_at: string;
   updated_at: string;
+};
+
+export type InventoryItem = {
+  id: string;
+  name: string;
+  unit: InventoryUnit;
+  current_stock: number;
+  min_threshold: number;
+  created_at: string;
+};
+
+export type Recipe = {
+  id: string;
+  product_id: string;
+  inventory_item_id: string;
+  quantity_required: number;
+  created_at: string;
+};
+
+export type ModifierRecipe = {
+  id: string;
+  modifier_id: string;
+  inventory_item_id: string;
+  quantity_required: number;
+  created_at: string;
+};
+
+export type WasteLog = {
+  id: string;
+  inventory_item_id: string;
+  quantity: number;
+  reason: WasteReason;
+  notes: string | null;
+  logged_by: string | null;
+  created_at: string;
 };
 
 export type OrderItem = {
@@ -176,6 +223,7 @@ export type Database = {
           status?: OrderStatus;
           notes?: string | null;
           created_by?: string | null;
+          stock_deducted?: boolean;
           created_at?: string;
           updated_at?: string;
         };
@@ -188,6 +236,7 @@ export type Database = {
           status?: OrderStatus;
           notes?: string | null;
           created_by?: string | null;
+          stock_deducted?: boolean;
           created_at?: string;
           updated_at?: string;
         };
@@ -219,14 +268,107 @@ export type Database = {
         };
         Relationships: [];
       };
+      inventory_items: {
+        Row: InventoryItem;
+        Insert: {
+          id?: string;
+          name: string;
+          unit: InventoryUnit;
+          current_stock?: number;
+          min_threshold?: number;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          name?: string;
+          unit?: InventoryUnit;
+          current_stock?: number;
+          min_threshold?: number;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      recipes: {
+        Row: Recipe;
+        Insert: {
+          id?: string;
+          product_id: string;
+          inventory_item_id: string;
+          quantity_required: number;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          product_id?: string;
+          inventory_item_id?: string;
+          quantity_required?: number;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      modifier_recipes: {
+        Row: ModifierRecipe;
+        Insert: {
+          id?: string;
+          modifier_id: string;
+          inventory_item_id: string;
+          quantity_required: number;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          modifier_id?: string;
+          inventory_item_id?: string;
+          quantity_required?: number;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      waste_logs: {
+        Row: WasteLog;
+        Insert: {
+          id?: string;
+          inventory_item_id: string;
+          quantity: number;
+          reason: WasteReason;
+          notes?: string | null;
+          logged_by?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          inventory_item_id?: string;
+          quantity?: number;
+          reason?: WasteReason;
+          notes?: string | null;
+          logged_by?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      deduct_stock_for_order: {
+        Args: { p_order_id: string };
+        Returns: Json;
+      };
+      log_waste_and_deduct: {
+        Args: {
+          p_inventory_item_id: string;
+          p_quantity: number;
+          p_reason: WasteReason;
+          p_notes?: string | null;
+        };
+        Returns: Json;
+      };
+    };
     Enums: {
       user_role: UserRole;
       payment_method: PaymentMethod;
       order_type: OrderType;
       order_status: OrderStatus;
+      waste_reason: WasteReason;
     };
     CompositeTypes: Record<string, never>;
   };
