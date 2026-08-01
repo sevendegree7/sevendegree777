@@ -48,6 +48,10 @@ export async function updateSession(request: NextRequest) {
 
   const pathname = request.nextUrl.pathname;
   const isLoginPage = pathname === "/login";
+  // qr guests open this without an account
+  const isPublicMenu =
+    pathname === "/menu" || pathname.startsWith("/menu/");
+  const isPublicRoute = isLoginPage || isPublicMenu;
   const isPublicAsset =
     pathname.startsWith("/_next") ||
     pathname.startsWith("/favicon") ||
@@ -57,13 +61,18 @@ export async function updateSession(request: NextRequest) {
     return supabaseResponse;
   }
 
-  if (!user && !isLoginPage) {
+  if (!user && !isPublicRoute) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);
   }
 
   if (!user) {
+    return supabaseResponse;
+  }
+
+  // staff can also open the customer menu to preview
+  if (isPublicMenu) {
     return supabaseResponse;
   }
 

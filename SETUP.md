@@ -105,8 +105,22 @@ invite your teammate to the repo after that.
 
 ---
 
+## public qr menu
+
+- live page: `/menu` (no login)
+- shows only products with `is_available = true` (+ modifiers)
+- run once in supabase: `supabase/public-menu.sql`
+- when you deploy to vercel, the permanent menu link is:
+  `https://YOUR_PROJECT.vercel.app/menu`
+- print a qr that points to that full url (or your custom domain later)
+- qr codes themselves never expire. do not use temporary short links that die
+  in 10 days — use the vercel/custom domain directly
+
+---
+
 ## if something fails
 
 - login says no role: profile row missing or wrong uuid
 - blank redirect loop: check `.env.local` keys
 - cannot read products later: make sure `seed.sql` ran
+- public `/menu` empty or error for guests: run `public-menu.sql`

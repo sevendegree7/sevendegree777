@@ -64,6 +64,8 @@ not done yet:
 - reversing stock on late cancels
 - deeper food-cost analytics
 
+public customer menu: `/menu` (qr) — see `SETUP.md` / `supabase/public-menu.sql`
+
 ---
 
 ## 3) roles (important)

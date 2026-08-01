@@ -1,0 +1,48 @@
+/* customer-facing qr menu look */
+.menu-root {
+  --menu-ink: #2a1710;
+  --menu-paper: #f3e6d8;
+  --menu-cream: #fff8f0;
+  --menu-accent: #b45309;
+  --menu-muted: #7c5c4a;
+  --menu-line: rgba(42, 23, 16, 0.12);
+  color: var(--menu-ink);
+  font-family: var(--font-menu-body), system-ui, sans-serif;
+  background:
+    radial-gradient(ellipse 120% 80% at 10% -10%, #ffe8c8 0%, transparent 55%),
+    radial-gradient(ellipse 90% 60% at 100% 0%, #e8c4a0 0%, transparent 45%),
+    linear-gradient(180deg, #f7ebe0 0%, #efe0d0 40%, #e8d5c4 100%);
+}
+
+.menu-root h1,
+.menu-root h2,
+.menu-root .menu-display {
+  font-family: var(--font-menu-display), Georgia, serif;
+}
+
+@keyframes menu-rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.menu-rise {
+  animation: menu-rise 0.55s ease-out both;
+}
+
+.menu-rise-delay-1 {
+  animation-delay: 0.08s;
+}
+
+.menu-rise-delay-2 {
+  animation-delay: 0.16s;
+}
+
+.menu-rise-delay-3 {
+  animation-delay: 0.24s;
+}
