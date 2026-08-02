@@ -322,7 +322,7 @@ the plan, one small pr per step:
    came from (done, see §17)
 5. **sync worker** — on reconnect, upload pending sales through the existing
    `createOrder`; `orders.client_id` is what makes a retry safe. it calls
-   `setPendingSync()` so the banner says `syncing orders...`
+   `setPendingSync()` so the banner says `syncing orders...` (done, see §18)
 6. **offline login** — the tablet must open a shift with no internet
 
 what does **not** change if the hardware turns out different later: the seam,
@@ -614,3 +614,119 @@ appeared on the board in the other tab with no reload, modifier and item note
 included. offline, the board kept its tickets, a cloud ticket refused to move
 with the "no internet" sentence, and a local one moved fine. no console errors
 on either tab.
+
+---
+
+## 18) sync worker (built — step 5)
+
+the sales sitting on the tablet now go up on their own when the internet comes
+back. **this is the step that closes the offline loop** — money taken with no
+connection ends up in the same tables, the same reports and the same kitchen
+queue as everything else.
+
+what is in it:
+
+- `src/lib/data/sync.ts` — `syncPendingOrders()`, the worker
+- `src/components/offline-sync.tsx` — the mount that starts it
+- `src/lib/data/index.ts` — `getCloudSource()`
+- `src/lib/data/order-store.ts` — `syncError` on a record, and `getUploadError`
+- `src/lib/data/use-unsynced-sales.ts` — `useUploadError()`
+- `src/app/pos/pos-screen.tsx` — "upload now", and the upload problem chip
+
+### it decides nothing about the sale
+
+the worker replays the checkout through **the same server action the till
+uses**. the tablet only says which products, how many, and which extras — the
+server prices it from the db, checks the role, stamps `created_by`, and pulls
+stock, exactly like an online sale. an offline receipt and the row in supabase
+can therefore disagree only if the menu price changed while the tablet was
+away, and the db copy is the one that counts.
+
+`orders.client_id` is what makes replaying safe: the same checkout arriving
+twice returns the first order instead of charging the customer again. that is
+also why two tabs running this at once cannot double a sale.
+
+`getCloudSource()` exists for one caller. uploading is an online-only job, and
+if the connection flipped mid-run `getDataSource()` would hand the worker the
+*local* source — which would write the sale to the tablet a second time
+instead of sending it. screens keep using `getDataSource()`.
+
+### when it runs
+
+- the connection goes from anything to `online` (the normal case)
+- any screen mounts with a live connection
+- the cashier taps **upload now** next to the waiting-sales chip
+
+no timer, and no run when a sale is written: a sale only ever lands on the
+tablet while there is no internet, so "the connection just came back" is the
+whole story. a run that ends puts the banner back on `online`, which is
+explicitly *not* treated as an edge — otherwise a failed sale would loop.
+
+one run at a time per tab: a second call while one is going gets the same run.
+
+### one sale, in order
+
+1. upload it through `submitOrder`
+2. **write the cloud id down** (`syncedOrderId`) before anything else can fail
+3. catch the cloud copy up to the status this tablet has
+4. drop the local record
+
+step 2 is the important one. from that moment the money is in supabase, and a
+retry must never treat the sale as un-uploaded — a record that already has a
+`syncedOrderId` skips straight to step 3 on the next run.
+
+step 3 is there because **`createOrder` always inserts a `pending` order**. a
+ticket the kitchen already walked to `ready` would come back as new work
+otherwise. the worker walks it one hop at a time through the same server action
+a kitchen tap uses (`pending → preparing → ready → completed`, three hops at
+most), so a move the kitchen is not allowed to make is not allowed here either,
+and it stops early if another screen already moved the ticket further.
+
+### when it does not work
+
+two different failures, on purpose:
+
+- **the server refused** (`ok: false`) — the sale stays on the tablet with the
+  reason on it, and the till shows `upload problem: <reason>`. the run carries
+  on to the next sale. nothing is ever dropped, and every run retries it
+- **the request never came back** — the run stops there, asks the connection
+  watcher to re-check, and leaves the rest for the next reconnect. throwing the
+  whole queue at a dead connection only wastes it
+
+the banner says `syncing orders...` while a run is in flight and returns to
+`online` when it ends, including when sales were refused: a sale the server
+will not take is not syncing, and the till says that part in words.
+
+### known wrinkles (accepted, not bugs)
+
+- **the ticket number changes on upload.** the local id was made on the tablet;
+  supabase makes its own on insert. the kitchen sees `#6154a9b6` become
+  `#6ca03896`. the fix is to let `createOrder` accept the local order id — a
+  browser choosing a primary key, which is worth doing deliberately in phase 5,
+  not in passing here
+- a status move made **during the last round trip** can be lost, because the
+  target is read just before the catch-up. it costs the kitchen one more tap on
+  a ticket that is already safe in the cloud
+- an uploaded sale whose catch-up failed is not in the till's waiting count —
+  it is not waiting to upload, the money is already up — so it is only retried
+  on the next connection edge. the upload problem chip still shows it
+- **stock moves on upload, not on sale.** the deduct runs inside
+  `createOrder`, so a spell offline leaves inventory reading high until the
+  sales go up
+- the tablet must be signed in as **admin**: `createOrder` wants
+  cashier-or-admin and `moveOrderStatus` wants kitchen-or-admin, and one tablet
+  runs both screens. a cashier account uploads the sale but cannot catch its
+  status up
+
+how it was tested: production build on `:3001`, two tabs. three sales left over
+from step 4 (`pending`, `preparing`, `completed`) uploaded on open — the
+`preparing` one came back on the board in the preparing column, the `completed`
+one never appeared, and today's sales went from 105.00 to 245.00. then a fresh
+offline sale (2× turkish coffee, 40.00) was started by the kitchen on the other
+tab, and on reconnect the banner flashed `syncing orders...`, the record left
+the tablet, and the ticket reappeared as a cloud ticket **still in preparing**.
+a record pointing at a product that no longer exists was refused and kept, with
+`upload problem: a product in the cart no longer exists` on the till. a record
+already marked uploaded was not sent again — it only tried the catch-up, and
+the day's total did not move. no console errors on either tab, no server
+errors.

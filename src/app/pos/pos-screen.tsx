@@ -3,10 +3,15 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 
 import { ConnectionBanner } from "@/components/connection-banner";
+import { OfflineSync } from "@/components/offline-sync";
 import { checkConnection, useConnection } from "@/lib/connection/use-connection";
 import { getDataSource, type MenuSnapshot } from "@/lib/data";
 import { writeCachedMenu } from "@/lib/data/menu-cache";
-import { useUnsyncedSales } from "@/lib/data/use-unsynced-sales";
+import { syncPendingOrders } from "@/lib/data/sync";
+import {
+  useUnsyncedSales,
+  useUploadError,
+} from "@/lib/data/use-unsynced-sales";
 import {
   cartTotal,
   modifierSignature,
@@ -61,6 +66,7 @@ export function PosScreen({ initialMenu }: PosScreenProps) {
 
   // sales taken with no internet that supabase has not seen yet
   const waitingSales = useUnsyncedSales();
+  const uploadError = useUploadError();
   const connection = useConnection();
   const offline = connection === "offline";
   // card and instapay need the terminal / the app on the phone, both online
@@ -307,6 +313,8 @@ export function PosScreen({ initialMenu }: PosScreenProps) {
 
   return (
     <div className="grid gap-5 lg:grid-cols-[1fr_24rem] lg:items-start">
+      <OfflineSync />
+
       <div className="flex flex-col gap-4">
         <div className="flex flex-wrap items-center gap-3">
           <ConnectionBanner />
@@ -321,6 +329,24 @@ export function PosScreen({ initialMenu }: PosScreenProps) {
                 ? "1 sale on this tablet"
                 : `${waitingSales} sales on this tablet`}{" "}
               waiting to upload
+            </span>
+          ) : null}
+          {waitingSales > 0 && !offline ? (
+            // the worker already runs on its own when the connection returns.
+            // this is for the cashier who can see sales waiting and wants them
+            // gone now, before the shift is counted.
+            <button
+              type="button"
+              onClick={() => void syncPendingOrders()}
+              disabled={connection === "syncing"}
+              className="rounded-full border border-amber-300 px-3 py-1 text-sm text-amber-900 disabled:opacity-50"
+            >
+              {connection === "syncing" ? "uploading..." : "upload now"}
+            </button>
+          ) : null}
+          {uploadError ? (
+            <span className="rounded-full bg-red-100 px-3 py-1 text-sm text-red-900">
+              upload problem: {uploadError}
             </span>
           ) : null}
         </div>

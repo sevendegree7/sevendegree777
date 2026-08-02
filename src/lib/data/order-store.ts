@@ -21,6 +21,10 @@ export type LocalOrder = {
   // the id supabase gave this sale once it was uploaded. null means it is
   // still only on this tablet.
   syncedOrderId: string | null;
+  // why the last upload attempt was refused, so the till can say it out loud
+  // instead of leaving a sale stuck with no explanation. cleared on the
+  // attempt that works. missing on records written before the sync worker.
+  syncError?: string | null;
 };
 
 // storage is full, disabled, or holds something from an older build. none of
@@ -30,7 +34,11 @@ function isLocalOrder(value: unknown): value is LocalOrder {
     return false;
   }
 
-  const candidate = value as { order?: unknown; syncedOrderId?: unknown };
+  const candidate = value as {
+    order?: unknown;
+    syncedOrderId?: unknown;
+    syncError?: unknown;
+  };
   const order = candidate.order as Partial<KitchenOrder> | undefined;
 
   return (
@@ -42,7 +50,10 @@ function isLocalOrder(value: unknown): value is LocalOrder {
     typeof order.status === "string" &&
     Array.isArray(order.items) &&
     (candidate.syncedOrderId === null ||
-      typeof candidate.syncedOrderId === "string")
+      typeof candidate.syncedOrderId === "string") &&
+    (candidate.syncError === undefined ||
+      candidate.syncError === null ||
+      typeof candidate.syncError === "string")
   );
 }
 
@@ -128,6 +139,7 @@ const EMPTY: LocalOrder[] = [];
 
 let cached: LocalOrder[] = EMPTY;
 let unsyncedCount = 0;
+let uploadError: string | null = null;
 let listeners: (() => void)[] = [];
 
 // everything a screen can see about a ticket. a status move changes no count,
@@ -136,7 +148,7 @@ function signature(orders: LocalOrder[]): string {
   return orders
     .map(
       (local) =>
-        `${local.order.client_id}~${local.order.status}~${local.order.updated_at}~${local.syncedOrderId ?? ""}`,
+        `${local.order.client_id}~${local.order.status}~${local.order.updated_at}~${local.syncedOrderId ?? ""}~${local.syncError ?? ""}`,
     )
     .join("|");
 }
@@ -156,6 +168,7 @@ export function refreshLocalOrders(): void {
 
   cached = next;
   unsyncedCount = next.filter((local) => local.syncedOrderId === null).length;
+  uploadError = next.find((local) => local.syncError)?.syncError ?? null;
 
   for (const listener of listeners) {
     listener();
@@ -174,6 +187,12 @@ export function getServerSnapshot(): LocalOrder[] {
 
 export function getUnsyncedCount(): number {
   return unsyncedCount;
+}
+
+// the reason the oldest stuck sale gave. one message, not a list: the till has
+// a strip of chips, and the fix for the first one usually fixes the rest.
+export function getUploadError(): string | null {
+  return uploadError;
 }
 
 export function subscribeLocalOrders(listener: () => void): () => void {
