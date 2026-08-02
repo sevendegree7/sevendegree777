@@ -66,3 +66,27 @@ export function sortByOldest(orders: KitchenOrder[]): KitchenOrder[] {
       new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
   );
 }
+
+// one board out of two stores: what supabase has, plus the sales this tablet
+// took with no internet.
+//
+// a local ticket whose `client_id` is already in the cloud list has been
+// uploaded, so the cloud copy wins - it is the one every screen can see, and
+// showing both would put the same ticket on the board twice.
+export function mergeBoard(
+  cloud: KitchenOrder[],
+  local: KitchenOrder[],
+): KitchenOrder[] {
+  const uploaded = new Set(
+    cloud
+      .map((order) => order.client_id)
+      .filter((clientId): clientId is string => clientId !== null),
+  );
+
+  return sortByOldest([
+    ...cloud,
+    ...local.filter(
+      (order) => order.client_id === null || !uploaded.has(order.client_id),
+    ),
+  ]);
+}

@@ -319,7 +319,7 @@ the plan, one small pr per step:
 3. **offline cash checkout** — a sale with no internet is written locally and
    marked pending (done, see §16)
 4. **`/kds` reads local + cloud** — one board, whichever source the ticket
-   came from
+   came from (done, see §17)
 5. **sync worker** — on reconnect, upload pending sales through the existing
    `createOrder`; `orders.client_id` is what makes a retry safe. it calls
    `setPendingSync()` so the banner says `syncing orders...`
@@ -505,3 +505,112 @@ went through — the till said "saved on this tablet", the line read *"2 sales o
 this tablet waiting to upload"*, and localstorage held two records with
 `syncedOrderId: null` and the right totals. back online, the line survived a
 reload and the next sale said "sent to kitchen" with no new local record.
+
+---
+
+## 17) one board, two stores (built — step 4)
+
+step 3 put offline sales on the tablet, where nothing could see them. the
+kitchen board now shows them next to the cloud tickets, and can work them.
+**they still do not upload — that is step 5.**
+
+what is in it:
+
+- `src/lib/kds/orders.ts` — `mergeBoard(cloud, local)`
+- `src/lib/data/order-store.ts` — the store publishes the tickets, not just
+  the count, and gained `findLocalByOrderId` / `moveLocalStatus`
+- `src/lib/data/use-local-orders.ts` — the local tickets, as something a
+  screen can watch
+- `src/app/kds/kds-screen.tsx` — the merged board, and the routing of a move
+- `src/app/kds/components/order-card.tsx` — the "on this tablet only" badge
+
+### routing is by ticket, not by connection
+
+this is the whole idea of the step. the till picks its source by asking whether
+the internet is up (§16); the board **cannot**, because a sale taken offline is
+still missing from supabase long after the internet comes back. there is no row
+to update until the sync worker has run.
+
+so the board asks a different question — *where does this ticket live?*
+
+```ts
+if (localIds.has(order.id)) {
+  moveLocalStatus(order.id, order.status, to); // this tablet
+  return;
+}
+// otherwise the existing cloud path, unchanged
+```
+
+a local ticket moves on the tablet with the internet up or down. a cloud ticket
+always goes to the server, and offline it fails with the sentence step 3
+already wrote — the kitchen is told the ticket cannot move yet, which is true.
+
+`moveLocalStatus` returns the **same `MoveStatusResult`** the server action
+returns, so the board has one way to read an answer. it checks `canMove` (the
+same table the server checks), and when the status has already changed — the
+till tab moved it a second earlier — it reports where the ticket actually
+landed instead of failing, exactly like the server does.
+
+### the store publishes tickets now
+
+`useUnsyncedSales` only needed a number. a status move changes no number, so
+counting could not tell the board to redraw.
+
+the store now keeps a **cached list** and compares a signature of it
+(`client_id ~ status ~ updated_at ~ syncedOrderId`) before notifying. identical
+reads keep the same array, so `useSyncExternalStore` sees no change and nothing
+re-renders; a real change notifies both screens. `getServerSnapshot` returns
+one shared empty array — a fresh `[]` each call is a render loop.
+
+the `storage` event already in the store carries this across tabs: a sale taken
+on `/pos` appears on `/kds` in the other tab **with no reload**, and a move
+made on the board shows up in the till's waiting count.
+
+### merging without showing a ticket twice
+
+```ts
+mergeBoard(cloud, local) // -> sortByOldest, cloud wins on client_id
+```
+
+two rules, and they overlap on purpose:
+
+- `useLocalOrders` drops anything with a `syncedOrderId` — the tablet knows it
+  uploaded that one
+- `mergeBoard` drops a local ticket whose `client_id` is already in the cloud
+  list — covers the other tab uploading it, or the record not being marked yet
+
+the merged board is sorted oldest-first with the same `sortByOldest` the cloud
+list uses, so a local sale takes its real place in the queue instead of being
+pinned to the end. the kitchen works fifo across both stores.
+
+the badge on a local card is deliberately blunt: **"on this tablet only"**.
+if the tablet is wiped or the browser storage is cleared before step 5 runs,
+that ticket is gone — the staff should be able to see which ones are at risk.
+`onReload` is a no-op for those cards too: there is nothing to re-read.
+
+### what is still rough (and fine for now)
+
+- offline, the cloud tickets on the board are whatever was there when the
+  internet dropped. they are not refreshed and they cannot move. the banner
+  says so
+- the realtime effect was left exactly as it was, deps and all. it must not
+  re-subscribe every time a local sale is written
+- a completed local ticket leaves the board but **stays in storage**, unsynced.
+  that is correct: it still has to be uploaded and counted in the day's sales
+
+### the note step 5 must not miss
+
+`createOrder` always inserts a `pending` order. a local ticket that the kitchen
+already walked to `ready` will come back from the upload as `pending` unless
+the sync worker **catches it up** — upload, then move the new cloud order to
+the status the local record holds. the local `updated_at` is there for it.
+
+how it was tested: production build on `:3001`, two tabs (`/pos` and `/kds`).
+three tickets merged fifo with the badge on the two local ones. a local ticket
+walked pending → preparing → ready → picked up **while online**, survived a
+full reload at each step, and left the board on completion while staying in
+storage with `syncedOrderId: null`. a sale taken offline in the till tab
+appeared on the board in the other tab with no reload, modifier and item note
+included. offline, the board kept its tickets, a cloud ticket refused to move
+with the "no internet" sentence, and a local one moved fine. no console errors
+on either tab.
