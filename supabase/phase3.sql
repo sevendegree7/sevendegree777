@@ -3,14 +3,21 @@
 -- safe to re-run parts that use if not exists / or replace
 
 -- why stock left the shelf without a sale
-create type public.waste_reason as enum (
-  'burnt',
-  'dropped',
-  'expired',
-  'spoiled',
-  'remake',
-  'other'
-);
+-- wrapped so re-running this file does not abort on the second pass
+do $$
+begin
+  if not exists (select 1 from pg_type where typname = 'waste_reason') then
+    create type public.waste_reason as enum (
+      'burnt',
+      'dropped',
+      'expired',
+      'spoiled',
+      'remake',
+      'other'
+    );
+  end if;
+end
+$$;
 
 -- raw materials on the truck
 create table if not exists public.inventory_items (

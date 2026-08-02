@@ -47,7 +47,7 @@ function ProductRow({
     startTransition(async () => {
       const result = await updateProduct({
         productId: product.id,
-        basePrice: Number(price),
+        basePrice: price,
         isAvailable: available,
       });
       setMessage(result.ok ? result.message ?? "saved" : result.message);

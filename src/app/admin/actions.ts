@@ -32,23 +32,34 @@ async function requireAdmin() {
   return { supabase, error: null, userId: user.id };
 }
 
+// number fields arrive as raw input text. Number("") is 0, so parsing loosely
+// would let a cleared price field save the product at zero and give it away.
+function parseAmount(raw: string): number | null {
+  const text = raw.trim();
+  if (text === "") return null;
+
+  const value = Number(text);
+  return Number.isFinite(value) ? value : null;
+}
+
 // change price or availability on a product
 export async function updateProduct(input: {
   productId: string;
-  basePrice: number;
+  basePrice: string;
   isAvailable: boolean;
 }): Promise<ActionResult> {
   const { supabase, error } = await requireAdmin();
   if (error) return { ok: false, message: error };
 
-  if (!Number.isFinite(input.basePrice) || input.basePrice < 0) {
-    return { ok: false, message: "price must be zero or more" };
+  const basePrice = parseAmount(input.basePrice);
+  if (basePrice === null || basePrice < 0) {
+    return { ok: false, message: "enter a price of zero or more" };
   }
 
   const { error: updateError } = await supabase
     .from("products")
     .update({
-      base_price: input.basePrice,
+      base_price: basePrice,
       is_available: input.isAvailable,
     })
     .eq("id", input.productId);
@@ -62,37 +73,40 @@ export async function updateProduct(input: {
   return { ok: true, message: "product saved" };
 }
 
-// add stock after a delivery
+// add stock after a delivery.
+// the add happens inside postgres (current_stock = current_stock + n) so a sale
+// that deducts while the admin is typing is not overwritten. reading the stock
+// here and writing the sum back used to erase that sale's deduct.
 export async function restockItem(input: {
   itemId: string;
-  addQuantity: number;
+  addQuantity: string;
 }): Promise<ActionResult> {
   const { supabase, error } = await requireAdmin();
   if (error) return { ok: false, message: error };
 
-  if (!Number.isFinite(input.addQuantity) || input.addQuantity <= 0) {
+  const addQuantity = parseAmount(input.addQuantity);
+  if (addQuantity === null || addQuantity <= 0) {
     return { ok: false, message: "add a positive quantity" };
   }
 
-  const { data: item, error: readError } = await supabase
-    .from("inventory_items")
-    .select("current_stock")
-    .eq("id", input.itemId)
-    .maybeSingle();
+  const { data, error: rpcError } = await supabase.rpc(
+    "restock_inventory_item",
+    { p_item_id: input.itemId, p_add_quantity: addQuantity },
+  );
 
-  if (readError || !item) {
-    return { ok: false, message: "inventory item not found" };
+  if (rpcError) {
+    if (rpcError.code === "PGRST202" || rpcError.code === "42883") {
+      return {
+        ok: false,
+        message: "run supabase/phase3-fixes.sql in the sql editor first",
+      };
+    }
+    return { ok: false, message: rpcError.message };
   }
 
-  const next = Number(item.current_stock) + input.addQuantity;
-
-  const { error: updateError } = await supabase
-    .from("inventory_items")
-    .update({ current_stock: next })
-    .eq("id", input.itemId);
-
-  if (updateError) {
-    return { ok: false, message: updateError.message };
+  const payload = data as { ok?: boolean; message?: string } | null;
+  if (payload && payload.ok === false) {
+    return { ok: false, message: payload.message ?? "restock failed" };
   }
 
   revalidatePath("/admin/inventory");
@@ -103,18 +117,19 @@ export async function restockItem(input: {
 // set threshold for low stock warnings
 export async function updateThreshold(input: {
   itemId: string;
-  minThreshold: number;
+  minThreshold: string;
 }): Promise<ActionResult> {
   const { supabase, error } = await requireAdmin();
   if (error) return { ok: false, message: error };
 
-  if (!Number.isFinite(input.minThreshold) || input.minThreshold < 0) {
-    return { ok: false, message: "threshold must be zero or more" };
+  const minThreshold = parseAmount(input.minThreshold);
+  if (minThreshold === null || minThreshold < 0) {
+    return { ok: false, message: "enter a threshold of zero or more" };
   }
 
   const { error: updateError } = await supabase
     .from("inventory_items")
-    .update({ min_threshold: input.minThreshold })
+    .update({ min_threshold: minThreshold })
     .eq("id", input.itemId);
 
   if (updateError) {
