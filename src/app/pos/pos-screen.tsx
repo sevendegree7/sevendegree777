@@ -1,9 +1,10 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 
 import { ConnectionBanner } from "@/components/connection-banner";
 import { checkConnection, useConnection } from "@/lib/connection/use-connection";
+import { getDataSource, type MenuSnapshot } from "@/lib/data";
 import {
   cartTotal,
   modifierSignature,
@@ -12,7 +13,6 @@ import {
 } from "@/lib/pos/cart";
 import { formatMoney } from "@/lib/pos/money";
 import type {
-  Category,
   Modifier,
   OrderType,
   PaymentMethod,
@@ -20,7 +20,7 @@ import type {
   SelectedModifier,
 } from "@/types/database.types";
 
-import { createOrder, type CheckoutLine } from "./actions";
+import { type CheckoutLine } from "./actions";
 import { CartPanel } from "./components/cart-panel";
 import { CategoryTabs } from "./components/category-tabs";
 import { ConfirmDialog } from "./components/confirm-dialog";
@@ -28,14 +28,18 @@ import { ModifierModal } from "./components/modifier-modal";
 import { ProductGrid } from "./components/product-grid";
 
 type PosScreenProps = {
-  categories: Category[];
-  products: Product[];
-  modifiers: Modifier[];
+  // read on the server for a fast first paint. null means that read failed,
+  // and the screen asks the data source for the menu itself.
+  initialMenu: MenuSnapshot | null;
 };
 
 type Feedback = { kind: "success" | "error"; text: string } | null;
 
-export function PosScreen({ categories, products, modifiers }: PosScreenProps) {
+export function PosScreen({ initialMenu }: PosScreenProps) {
+  const [menu, setMenu] = useState<MenuSnapshot | null>(initialMenu);
+  const [menuError, setMenuError] = useState<string | null>(null);
+  const [menuAttempt, setMenuAttempt] = useState(0);
+
   const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null);
   const [cart, setCart] = useState<CartLine[]>([]);
   const [modalProduct, setModalProduct] = useState<Product | null>(null);
@@ -55,11 +59,41 @@ export function PosScreen({ categories, products, modifiers }: PosScreenProps) {
   const paymentBlocked =
     offline && (paymentMethod === "card" || paymentMethod === "instapay");
 
+  // only runs when the server did not hand us a menu. later this is also the
+  // path that serves the cached menu on a tablet with no internet.
+  useEffect(() => {
+    if (menu) {
+      return;
+    }
+
+    let cancelled = false;
+
+    void (async () => {
+      const result = await getDataSource().loadMenu();
+
+      if (cancelled) {
+        return;
+      }
+
+      if (result.error !== null) {
+        setMenuError(result.error);
+        return;
+      }
+
+      setMenuError(null);
+      setMenu(result.data);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [menu, menuAttempt]);
+
   // modifiers grouped once so tapping a product is instant
   const modifiersByProduct = useMemo(() => {
     const grouped = new Map<string, Modifier[]>();
 
-    for (const modifier of modifiers) {
+    for (const modifier of menu?.modifiers ?? []) {
       const existing = grouped.get(modifier.product_id);
       if (existing) {
         existing.push(modifier);
@@ -69,15 +103,15 @@ export function PosScreen({ categories, products, modifiers }: PosScreenProps) {
     }
 
     return grouped;
-  }, [modifiers]);
+  }, [menu]);
 
-  const visibleProducts = useMemo(
-    () =>
-      activeCategoryId === null
-        ? products
-        : products.filter((product) => product.category_id === activeCategoryId),
-    [products, activeCategoryId],
-  );
+  const visibleProducts = useMemo(() => {
+    const products = menu?.products ?? [];
+
+    return activeCategoryId === null
+      ? products
+      : products.filter((product) => product.category_id === activeCategoryId);
+  }, [menu, activeCategoryId]);
 
   const itemCount = cart.reduce((sum, line) => sum + line.quantity, 0);
   const total = cartTotal(cart);
@@ -179,7 +213,7 @@ export function PosScreen({ categories, products, modifiers }: PosScreenProps) {
 
     startSubmit(async () => {
       try {
-        const result = await createOrder({
+        const result = await getDataSource().submitOrder({
           clientId: checkoutId,
           orderType,
           paymentMethod,
@@ -239,17 +273,43 @@ export function PosScreen({ categories, products, modifiers }: PosScreenProps) {
           </p>
         ) : null}
 
-        <CategoryTabs
-          categories={categories}
-          activeCategoryId={activeCategoryId}
-          onSelect={setActiveCategoryId}
-        />
+        {menu === null ? (
+          <div className="rounded-2xl bg-white p-6 shadow-sm">
+            <h2 className="text-xl font-medium">
+              {menuError ? "menu did not load" : "loading the menu..."}
+            </h2>
 
-        <ProductGrid
-          products={visibleProducts}
-          hasModifiers={(productId) => modifiersByProduct.has(productId)}
-          onSelect={onProductSelect}
-        />
+            {menuError ? (
+              <>
+                <p className="mt-2 text-stone-600">{menuError}</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMenuError(null);
+                    setMenuAttempt((count) => count + 1);
+                  }}
+                  className="mt-4 rounded-xl border border-stone-300 px-4 py-2 text-sm"
+                >
+                  try again
+                </button>
+              </>
+            ) : null}
+          </div>
+        ) : (
+          <>
+            <CategoryTabs
+              categories={menu.categories}
+              activeCategoryId={activeCategoryId}
+              onSelect={setActiveCategoryId}
+            />
+
+            <ProductGrid
+              products={visibleProducts}
+              hasModifiers={(productId) => modifiersByProduct.has(productId)}
+              onSelect={onProductSelect}
+            />
+          </>
+        )}
       </div>
 
       <div className="lg:sticky lg:top-6">
