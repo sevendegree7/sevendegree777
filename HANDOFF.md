@@ -51,7 +51,8 @@ phase 2 is done on top of it, and tested live against the real supabase project:
 
 phase 3 code is in the repo (admin + inventory + bom deduct):
 
-- run `supabase/phase3.sql` then `supabase/phase3-seed.sql` on your project
+- run `supabase/phase3.sql`, `supabase/phase3-seed.sql`, `supabase/public-menu.sql`,
+  then `supabase/phase3-fixes.sql` on your project
 - details: `PHASE-3-HANDOFF.md`
 
 details, gotchas and the live test results: `PHASE-2-HANDOFF.md`.
@@ -285,7 +286,8 @@ full instructions: `PHASE-4-HANDOFF.md`.
 
 1. `git pull origin main`
 2. keep `.env.local` from owner (shared supabase)
-3. run `supabase/phase3.sql` + `phase3-seed.sql` if not already run
+3. run `supabase/phase3.sql` + `phase3-seed.sql` + `public-menu.sql` +
+   `phase3-fixes.sql` if not already run
 4. smoke test admin + one sale + stock drop + kds
 5. read `PHASE-4-HANDOFF.md`
 6. branch from main for phase 4 work + open pr

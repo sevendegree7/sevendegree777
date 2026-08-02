@@ -43,8 +43,13 @@ never commit `.env.local`
 6. paste and run (sample menu)
 7. open `supabase/phase3.sql` and run
 8. open `supabase/phase3-seed.sql` and run (inventory + recipes)
+9. open `supabase/public-menu.sql` and run (public qr menu)
+10. open `supabase/phase3-fixes.sql` and run (restock function + tighter menu policy)
 
 if realtime line fails because it was already added, ignore that one error and continue.
+
+**do not highlight any text before pressing run** — the sql editor runs only the
+highlighted part if there is a selection, which silently skips the rest of the file.
 
 ---
 
@@ -124,3 +129,5 @@ invite your teammate to the repo after that.
 - blank redirect loop: check `.env.local` keys
 - cannot read products later: make sure `seed.sql` ran
 - public `/menu` empty or error for guests: run `public-menu.sql`
+- restock says "run supabase/phase3-fixes.sql in the sql editor first": that file
+  has not been applied to this project yet. run it, then retry

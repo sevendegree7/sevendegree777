@@ -96,6 +96,9 @@ export async function restockItem(input: {
 
   if (rpcError) {
     if (rpcError.code === "PGRST202" || rpcError.code === "42883") {
+      // the ui message stays plain; the raw one is worth having in the log,
+      // because "not in the schema cache" also covers a stale postgrest cache
+      console.error("restock rpc missing", rpcError.code, rpcError.message);
       return {
         ok: false,
         message: "run supabase/phase3-fixes.sql in the sql editor first",

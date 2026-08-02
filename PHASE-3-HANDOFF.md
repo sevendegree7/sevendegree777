@@ -29,9 +29,15 @@ existing projects already ran `schema.sql` + `seed.sql`. now run in order:
 
 1. `supabase/phase3.sql`
 2. `supabase/phase3-seed.sql`
+3. `supabase/public-menu.sql`
+4. `supabase/phase3-fixes.sql`
 
 if you skip this, admin inventory pages show a warning and deduct rpc will fail
-(sale still saves; stock just will not move).
+(sale still saves; stock just will not move). skipping step 4 specifically makes
+the restock button return "run supabase/phase3-fixes.sql in the sql editor first".
+
+the sql editor runs **only the highlighted text** when there is a selection —
+click into the editor and make sure nothing is selected before pressing run.
 
 ### new tables / objects
 
