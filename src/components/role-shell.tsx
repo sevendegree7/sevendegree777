@@ -3,6 +3,9 @@
 import type { ReactNode } from "react";
 import { useRouter } from "next/navigation";
 
+import { ShiftKeeper } from "@/components/shift-keeper";
+import { clearShift } from "@/lib/auth/shift";
+import { getConnection } from "@/lib/connection/use-connection";
 import { createClient } from "@/lib/supabase/client";
 
 type RoleShellProps = {
@@ -17,13 +20,28 @@ export function RoleShell({ title, roleLabel, children }: RoleShellProps) {
 
   async function signOut() {
     const supabase = createClient();
-    await supabase.auth.signOut();
+
+    try {
+      // offline there is nobody to tell, so drop the session on the device and
+      // skip the round trip. closing a shift is not something to refuse
+      // because the truck moved out of range.
+      await supabase.auth.signOut(
+        getConnection() === "offline" ? { scope: "local" } : undefined,
+      );
+    } catch {
+      // the call itself failed. the tablet is still being handed over.
+    }
+
+    // whatever happened above, this tablet is no longer open as anybody
+    clearShift();
+
     router.replace("/login");
     router.refresh();
   }
 
   return (
     <main className="min-h-screen bg-stone-100 text-stone-900">
+      <ShiftKeeper />
       <header className="flex items-center justify-between border-b border-stone-200 bg-white px-6 py-4">
         <div>
           <p className="text-sm text-stone-500">seven degree · {roleLabel}</p>

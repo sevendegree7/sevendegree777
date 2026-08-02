@@ -5,11 +5,17 @@
 // wifi after every deploy, and it will open anywhere after that.
 //
 // bump VERSION when you change this file or want to drop every old copy.
-const VERSION = "v1";
+const VERSION = "v2";
 const CACHE = `seven-degree-${VERSION}`;
 
 // pages worth keeping a copy of. the rest of the app needs the server anyway.
-const CACHED_PAGES = ["/pos", "/kds"];
+//
+// /login is here for the shift: with no internet it is the screen that says
+// whose tablet this is and opens it again. the copy is taken on the way in -
+// a signed out tablet asking for /login on wifi is exactly the trip that
+// fills it, and while somebody is signed in that url only ever answers with a
+// redirect, which is never kept.
+const CACHED_PAGES = ["/pos", "/kds", "/login"];
 
 // an answer for a page we have never seen, so the tablet says something
 // instead of showing the browser's dinosaur.
