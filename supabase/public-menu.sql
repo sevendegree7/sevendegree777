@@ -11,10 +11,12 @@ on public.categories for select
 to anon
 using (true);
 
+-- only what is actually on sale. the anon key ships inside the browser bundle,
+-- so "using (true)" would let anyone read hidden products and their prices.
 create policy "products_select_anon"
 on public.products for select
 to anon
-using (true);
+using (is_available = true);
 
 create policy "modifiers_select_anon"
 on public.modifiers for select

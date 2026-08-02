@@ -1,17 +1,11 @@
 import { AdminShell } from "@/components/admin-shell";
 import { formatMoney } from "@/lib/pos/money";
+import { startOfTruckDayIso, truckDayKey } from "@/lib/reports/dates";
 import { createClient } from "@/lib/supabase/server";
-
-function daysAgoIso(days: number) {
-  const date = new Date();
-  date.setHours(0, 0, 0, 0);
-  date.setDate(date.getDate() - days);
-  return date.toISOString();
-}
 
 export default async function AdminReportsPage() {
   const supabase = await createClient();
-  const since = daysAgoIso(30);
+  const since = startOfTruckDayIso(30);
 
   const { data: orders, error } = await supabase
     .from("orders")
@@ -31,7 +25,8 @@ export default async function AdminReportsPage() {
   for (const order of list) {
     const pay = order.payment_method ?? "unknown";
     const type = order.order_type;
-    const day = order.created_at.slice(0, 10);
+    // by the clock on the truck, so a 1am sale is not filed under yesterday
+    const day = truckDayKey(order.created_at);
 
     byPayment[pay] = (byPayment[pay] ?? 0) + Number(order.total_amount);
     byType[type] = (byType[type] ?? 0) + Number(order.total_amount);

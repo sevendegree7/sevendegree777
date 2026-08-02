@@ -2,18 +2,14 @@ import Link from "next/link";
 
 import { AdminShell } from "@/components/admin-shell";
 import { formatMoney } from "@/lib/pos/money";
+import { startOfTruckDayIso } from "@/lib/reports/dates";
 import { createClient } from "@/lib/supabase/server";
-
-function startOfTodayIso() {
-  const now = new Date();
-  now.setHours(0, 0, 0, 0);
-  return now.toISOString();
-}
 
 // admin home: today's sales + low stock + shortcuts
 export default async function AdminPage() {
   const supabase = await createClient();
-  const since = startOfTodayIso();
+  // "today" is the truck's day, not the server's - vercel runs in utc
+  const since = startOfTruckDayIso();
 
   const [ordersResult, inventoryResult] = await Promise.all([
     supabase

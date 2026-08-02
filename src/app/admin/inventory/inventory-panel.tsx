@@ -32,7 +32,7 @@ function InventoryRow({ item }: { item: InventoryItem }) {
     startTransition(async () => {
       const result = await restockItem({
         itemId: item.id,
-        addQuantity: Number(addQty),
+        addQuantity: addQty,
       });
       setMessage(result.ok ? result.message ?? "updated" : result.message);
       if (result.ok) setAddQty("0");
@@ -44,7 +44,7 @@ function InventoryRow({ item }: { item: InventoryItem }) {
     startTransition(async () => {
       const result = await updateThreshold({
         itemId: item.id,
-        minThreshold: Number(threshold),
+        minThreshold: threshold,
       });
       setMessage(result.ok ? "threshold saved" : result.message);
     });
