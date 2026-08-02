@@ -6,6 +6,7 @@ import { ConnectionBanner } from "@/components/connection-banner";
 import { checkConnection, useConnection } from "@/lib/connection/use-connection";
 import { getDataSource, type MenuSnapshot } from "@/lib/data";
 import { writeCachedMenu } from "@/lib/data/menu-cache";
+import { useUnsyncedSales } from "@/lib/data/use-unsynced-sales";
 import {
   cartTotal,
   modifierSignature,
@@ -58,6 +59,8 @@ export function PosScreen({ initialMenu }: PosScreenProps) {
   const [feedback, setFeedback] = useState<Feedback>(null);
   const [submitting, startSubmit] = useTransition();
 
+  // sales taken with no internet that supabase has not seen yet
+  const waitingSales = useUnsyncedSales();
   const connection = useConnection();
   const offline = connection === "offline";
   // card and instapay need the terminal / the app on the phone, both online
@@ -258,8 +261,12 @@ export function PosScreen({ initialMenu }: PosScreenProps) {
     }));
 
     startSubmit(async () => {
+      // read once, before the await. the connection can flip while the sale is
+      // in flight, and the message has to describe where it actually went.
+      const source = getDataSource();
+
       try {
-        const result = await getDataSource().submitOrder({
+        const result = await source.submitOrder({
           clientId: checkoutId,
           orderType,
           paymentMethod,
@@ -279,7 +286,10 @@ export function PosScreen({ initialMenu }: PosScreenProps) {
         setSaleSeed(crypto.randomUUID());
         setFeedback({
           kind: "success",
-          text: `order ${result.orderId.slice(0, 8)} sent to kitchen · ${formatMoney(result.total)}`,
+          text:
+            source.kind === "local"
+              ? `order ${result.orderId.slice(0, 8)} saved on this tablet · ${formatMoney(result.total)} · it uploads when the internet is back`
+              : `order ${result.orderId.slice(0, 8)} sent to kitchen · ${formatMoney(result.total)}`,
         });
       } catch {
         // the request never came back, so we do not know if the order landed.
@@ -302,7 +312,15 @@ export function PosScreen({ initialMenu }: PosScreenProps) {
           <ConnectionBanner />
           {offline ? (
             <span className="text-sm text-stone-600">
-              cash only until the connection is back
+              cash only. every sale is saved on this tablet.
+            </span>
+          ) : null}
+          {waitingSales > 0 ? (
+            <span className="rounded-full bg-amber-100 px-3 py-1 text-sm text-amber-900">
+              {waitingSales === 1
+                ? "1 sale on this tablet"
+                : `${waitingSales} sales on this tablet`}{" "}
+              waiting to upload
             </span>
           ) : null}
         </div>
