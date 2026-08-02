@@ -315,6 +315,7 @@ the plan, one small pr per step:
 1. **data seam** — screens stop calling supabase and call one interface
    (done, see §14)
 2. **pwa + menu cache** — the app opens with no internet and the menu is there
+   (done, see §15)
 3. **offline cash checkout** — a sale with no internet is written locally and
    marked pending
 4. **`/kds` reads local + cloud** — one board, whichever source the ticket
@@ -355,3 +356,62 @@ rules:
   passes `initialMenu: MenuSnapshot | null`, and `null` means the screen asks
   the data source itself — that fallback is the same code path the cached
   offline menu will use
+
+---
+
+## 15) pwa: the app opens with no internet (built — step 2)
+
+the tablet installs this like an app and opens it with no connection at all.
+it still cannot **sell** offline — that is step 3.
+
+what is in it:
+
+- `src/app/manifest.ts` — the web app manifest. `start_url` is **`/pos`**, not
+  `/`: `/` only ever redirects, so there is no page there to keep a copy of
+- `public/icon-192.png`, `icon-512.png`, `apple-touch-icon.png` — drawn by
+  `node scripts/make-icons.mjs`, no image library, change the script not the
+  pngs
+- `public/sw.js` — the service worker
+- `src/components/service-worker.tsx` — registers it, mounted in the root
+  layout
+- `src/lib/data/menu-cache.ts` — the last menu on the device, in localstorage
+- `next.config.ts` — `/sw.js` is served `no-store`, so a bad worker can always
+  be replaced
+
+how the worker decides:
+
+| request | rule |
+|---------|------|
+| not GET | ignored. a cached checkout would be a lie |
+| another origin (supabase) | ignored |
+| `?_rsc=` payloads | ignored. they carry a build id, and next falls back to a full page load, which we can answer |
+| `/_next/static/*`, icons | cache first. the name changes when the file does |
+| `/pos`, `/kds` | network first, keep the copy |
+| any other page | network first, no copy — offline it gets the small "no internet" page |
+
+**it caches nothing up front.** it keeps what the app already fetched, so the
+rule for the truck is: **open the app once on wifi after every deploy.**
+
+things to keep in mind:
+
+- a redirect is never cached. signed out, `/pos` answers with the login page,
+  and that copy would then be shown to a cashier who is signed in
+- the worker is **off in development** and the component actively unregisters
+  any leftover one. a worker from a production build tested on localhost would
+  keep serving that build and eat an afternoon
+- offline the menu comes from the **cached page html**. the localstorage copy
+  is the second line (evicted cache, and the shape step 3 prices against).
+  `/pos` writes it on every load because the server read never touches the
+  tablet's storage
+- `MenuSnapshot.fetchedAt` drives a refresh: back online with a menu older than
+  five minutes, `/pos` re-reads it. the refresh only accepts a **newer**
+  snapshot — a failed read hands back the saved copy, and taking that would
+  loop the effect forever
+- ios only keeps storage for an app added with safari's **add to home screen**.
+  a plain tab can be evicted after a week idle
+- service workers need https or localhost. vercel is fine; a plain
+  `http://192.168.x.x` box would never get one
+
+how it was tested: `npm run build`, `next start`, open `/pos` and `/kds`,
+**kill the server**, then reload. both screens come up with the full menu, and
+an uncached page (`/admin`) gets the "no internet" page.

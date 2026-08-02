@@ -5,6 +5,7 @@ import { createOrder } from "@/app/pos/actions";
 import { fetchKitchenOrder, fetchKitchenOrders } from "@/lib/kds/queries";
 import { createClient } from "@/lib/supabase/client";
 
+import { readCachedMenu, writeCachedMenu } from "./menu-cache";
 import {
   loadFailed,
   loaded,
@@ -37,15 +38,26 @@ export function createCloudSource(): DataSource {
       const failed = categories.error ?? products.error ?? modifiers.error;
 
       if (failed) {
-        return loadFailed<MenuSnapshot>(failed.message);
+        // the menu is the one read that must survive with no internet:
+        // without it there is nothing to sell. everything else still fails
+        // honestly, because stale orders would be worse than none.
+        const cached = readCachedMenu();
+
+        return cached
+          ? loaded<MenuSnapshot>(cached)
+          : loadFailed<MenuSnapshot>(failed.message);
       }
 
-      return loaded<MenuSnapshot>({
+      const snapshot: MenuSnapshot = {
         categories: categories.data ?? [],
         products: products.data ?? [],
         modifiers: modifiers.data ?? [],
         fetchedAt: new Date().toISOString(),
-      });
+      };
+
+      writeCachedMenu(snapshot);
+
+      return loaded<MenuSnapshot>(snapshot);
     },
 
     async loadKitchenOrders() {
