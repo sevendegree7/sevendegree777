@@ -230,7 +230,7 @@ done when: cashier creates order -> kitchen sees it live -> can mark ready.
 full teammate brief: **`PHASE-4-HANDOFF.md`**
 
 - touch qa on lenovo/phone
-- connection banners online/offline/syncing
+- connection banners online/offline/syncing — **done**, `PHASE-4-HANDOFF.md` §11
 - local lan offline: pos/kds work on same network
 - when online again, sync orders into supabase using `client_id`
 - reuse `createOrder` on sync so stock deduct stays one path

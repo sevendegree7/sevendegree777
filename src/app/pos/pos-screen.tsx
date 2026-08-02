@@ -2,9 +2,12 @@
 
 import { useMemo, useState, useTransition } from "react";
 
+import { ConnectionBanner } from "@/components/connection-banner";
+import { checkConnection, useConnection } from "@/lib/connection/use-connection";
 import {
   cartTotal,
   modifierSignature,
+  saleSignature,
   type CartLine,
 } from "@/lib/pos/cart";
 import { formatMoney } from "@/lib/pos/money";
@@ -40,9 +43,17 @@ export function PosScreen({ categories, products, modifiers }: PosScreenProps) {
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash");
   const [orderNotes, setOrderNotes] = useState("");
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const [checkoutId, setCheckoutId] = useState("");
+  // new seed after every sale that lands, so two identical carts in a row are
+  // two orders. it survives a failed attempt, which is what makes a retry safe.
+  const [saleSeed, setSaleSeed] = useState(() => crypto.randomUUID());
   const [feedback, setFeedback] = useState<Feedback>(null);
   const [submitting, startSubmit] = useTransition();
+
+  const connection = useConnection();
+  const offline = connection === "offline";
+  // card and instapay need the terminal / the app on the phone, both online
+  const paymentBlocked =
+    offline && (paymentMethod === "card" || paymentMethod === "instapay");
 
   // modifiers grouped once so tapping a product is instant
   const modifiersByProduct = useMemo(() => {
@@ -70,6 +81,18 @@ export function PosScreen({ categories, products, modifiers }: PosScreenProps) {
 
   const itemCount = cart.reduce((sum, line) => sum + line.quantity, 0);
   const total = cartTotal(cart);
+
+  // same sale, same id. edit anything and the id changes on its own.
+  const checkoutId = useMemo(
+    () =>
+      `${saleSeed}:${saleSignature({
+        lines: cart,
+        orderType,
+        paymentMethod,
+        notes: orderNotes,
+      })}`,
+    [saleSeed, cart, orderType, paymentMethod, orderNotes],
+  );
 
   function addToCart(
     product: Product,
@@ -138,13 +161,11 @@ export function PosScreen({ categories, products, modifiers }: PosScreenProps) {
   }
 
   function openConfirm() {
-    if (cart.length === 0) {
+    if (cart.length === 0 || paymentBlocked) {
       return;
     }
 
     setFeedback(null);
-    // one id per checkout attempt so a double tap cannot create two orders
-    setCheckoutId(crypto.randomUUID());
     setConfirmOpen(true);
   }
 
@@ -157,34 +178,55 @@ export function PosScreen({ categories, products, modifiers }: PosScreenProps) {
     }));
 
     startSubmit(async () => {
-      const result = await createOrder({
-        clientId: checkoutId,
-        orderType,
-        paymentMethod,
-        notes: orderNotes.trim() ? orderNotes.trim() : null,
-        lines,
-      });
+      try {
+        const result = await createOrder({
+          clientId: checkoutId,
+          orderType,
+          paymentMethod,
+          notes: orderNotes.trim() ? orderNotes.trim() : null,
+          lines,
+        });
 
-      if (!result.ok) {
+        if (!result.ok) {
+          setConfirmOpen(false);
+          setFeedback({ kind: "error", text: result.message });
+          return;
+        }
+
+        setCart([]);
+        setOrderNotes("");
         setConfirmOpen(false);
-        setFeedback({ kind: "error", text: result.message });
-        return;
+        setSaleSeed(crypto.randomUUID());
+        setFeedback({
+          kind: "success",
+          text: `order ${result.orderId.slice(0, 8)} sent to kitchen · ${formatMoney(result.total)}`,
+        });
+      } catch {
+        // the request never came back, so we do not know if the order landed.
+        // the cart is kept exactly as it is: pressing pay again sends the same
+        // client_id, so the db returns that first order instead of a second one.
+        setConfirmOpen(false);
+        setFeedback({
+          kind: "error",
+          text: "could not reach the server. press pay again - the same order cannot be charged twice.",
+        });
+        void checkConnection();
       }
-
-      setCart([]);
-      setOrderNotes("");
-      setConfirmOpen(false);
-      setCheckoutId("");
-      setFeedback({
-        kind: "success",
-        text: `order ${result.orderId.slice(0, 8)} sent to kitchen · ${formatMoney(result.total)}`,
-      });
     });
   }
 
   return (
     <div className="grid gap-5 lg:grid-cols-[1fr_24rem] lg:items-start">
       <div className="flex flex-col gap-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <ConnectionBanner />
+          {offline ? (
+            <span className="text-sm text-stone-600">
+              cash only until the connection is back
+            </span>
+          ) : null}
+        </div>
+
         {feedback ? (
           <p
             className={`rounded-xl px-4 py-3 text-sm ${
@@ -217,6 +259,8 @@ export function PosScreen({ categories, products, modifiers }: PosScreenProps) {
           paymentMethod={paymentMethod}
           orderNotes={orderNotes}
           submitting={submitting}
+          offline={offline}
+          paymentBlocked={paymentBlocked}
           onChangeQuantity={changeQuantity}
           onRemove={(lineId) =>
             setCart((current) =>
