@@ -20,8 +20,10 @@ do **not** redesign roles, order statuses, payment methods, or `client_id`.
 3. in supabase sql editor, confirm phase 3 ran:
    - tables exist: `inventory_items`, `recipes`, `modifier_recipes`, `waste_logs`
    - column exists: `orders.stock_deducted`
-   - rpc exists: `deduct_stock_for_order`, `log_waste_and_deduct`
-   - if missing, run `supabase/phase3.sql` then `supabase/phase3-seed.sql`
+   - rpc exists: `deduct_stock_for_order`, `log_waste_and_deduct`,
+     `restock_inventory_item`
+   - if missing, run `supabase/phase3.sql`, `supabase/phase3-seed.sql`,
+     `supabase/public-menu.sql`, then `supabase/phase3-fixes.sql`
 4. smoke test:
    - admin `/admin` loads
    - cashier sells one item
