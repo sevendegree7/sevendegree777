@@ -51,3 +51,30 @@ export function modifierSignature(modifiers: SelectedModifier[]): string {
     .sort()
     .join("|");
 }
+
+// a fingerprint of exactly what is being sold right now.
+// the checkout id is this plus a per-sale seed, so pressing pay again after a
+// network wobble sends the same client_id and the db returns the first order
+// instead of charging twice - while any edit to the sale changes the id, so a
+// changed cart can never come back as the old order's total.
+export function saleSignature(input: {
+  lines: CartLine[];
+  orderType: string;
+  paymentMethod: string;
+  notes: string;
+}): string {
+  const body = input.lines
+    .map((line) =>
+      [
+        line.productId,
+        line.quantity,
+        modifierSignature(line.selectedModifiers),
+        line.notes ?? "",
+      ].join("~"),
+    )
+    .join(",");
+
+  return [input.orderType, input.paymentMethod, input.notes.trim(), body].join(
+    "#",
+  );
+}

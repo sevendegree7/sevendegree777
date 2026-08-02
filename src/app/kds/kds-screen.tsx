@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { ConnectionBanner } from "@/components/connection-banner";
+import { checkConnection } from "@/lib/connection/use-connection";
 import {
   KITCHEN_STATUSES,
   isKitchenStatus,
@@ -39,10 +41,12 @@ const CONNECTION_STYLE: Record<Connection, string> = {
   offline: "bg-red-100 text-red-900",
 };
 
+// says whether the realtime socket is up, next to the banner that says whether
+// the internet is up at all. the words stay apart so they cannot be misread.
 const CONNECTION_LABEL: Record<Connection, string> = {
-  connecting: "connecting...",
-  live: "live",
-  offline: "not live - tap refresh",
+  connecting: "realtime connecting...",
+  live: "realtime live",
+  offline: "realtime off - tap refresh",
 };
 
 function sleep(ms: number) {
@@ -272,6 +276,9 @@ export function KdsScreen({ initialOrders }: KdsScreenProps) {
         }
       })
       .catch(() => {
+        // ask the banner to re-check now instead of waiting for its next ping
+        void checkConnection();
+
         if (mounted.current) {
           setErrorText("could not reach the server. try again.");
         }
@@ -300,11 +307,14 @@ export function KdsScreen({ initialOrders }: KdsScreenProps) {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <span
-          className={`rounded-lg px-3 py-2 text-sm font-medium ${CONNECTION_STYLE[connection]}`}
-        >
-          {CONNECTION_LABEL[connection]}
-        </span>
+        <div className="flex flex-wrap items-center gap-3">
+          <ConnectionBanner />
+          <span
+            className={`rounded-lg px-3 py-2 text-sm font-medium ${CONNECTION_STYLE[connection]}`}
+          >
+            {CONNECTION_LABEL[connection]}
+          </span>
+        </div>
 
         <button
           type="button"

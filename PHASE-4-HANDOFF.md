@@ -82,9 +82,9 @@ alternative (heavier): small always-on local hub on the truck. only do this if p
 
 ### track a — harden (can parallel with offline design)
 
-1. global connection banner on `/pos` and `/kds`: `online` / `offline` / `syncing`
+1. ~~global connection banner on `/pos` and `/kds`: `online` / `offline` / `syncing`~~ **done** — see section 11
 2. touch qa: bigger buttons if needed on cart pay / kds status
-3. document + optionally fix: stock is **not** reversed if an order is cancelled **after** deduct (phase 3 known gap)
+3. ~~document~~ **documented in section 12** + optionally fix: stock is **not** reversed if an order is cancelled **after** deduct (phase 3 known gap)
 4. keep kds dead-socket recovery (already exists) — do not remove it
 5. optional: reprint last receipt stub (esc/pos can be thin if printer not connected)
 
@@ -200,3 +200,95 @@ do not break online pos/kds/admin.
 
 shared github: `https://github.com/sevendegree7/sevendegree777`
 shared supabase project (keys via `.env.local` from owner — never commit).
+
+---
+
+## 11) connection detection (built — track a step 1)
+
+files:
+
+```text
+src/lib/connection/use-connection.ts   the watcher (one per tab)
+src/components/connection-banner.tsx   the strip shown on /pos and /kds
+```
+
+how it decides:
+
+- `navigator.onLine` is only believed when it says **false** (no link at all).
+  its `true` is a lie on truck wifi with a dead uplink, so we always ping.
+- ping = `GET {SUPABASE_URL}/auth/v1/health` with the anon key, 4s timeout.
+  anything under http 500 means the network path to our project works.
+- every 20s while online, every 5s while offline, plus on the browser
+  `online` / `offline` events and whenever the tab becomes visible again.
+- **two** failed pings in a row before it says offline — one blip must not
+  block card payments. a failure re-checks after 2s instead of 20s, so a real
+  outage still shows within a few seconds.
+- offline shows a `check again` button so a wrong read is never a dead end.
+
+states: `checking` → `online` / `offline`, and `syncing` when online with
+local orders still to upload. **track b calls `setPendingSync(count)`** from the
+sync worker — that is the only thing that turns the banner amber. nothing sets
+it yet.
+
+read it from a component with `useConnection()`, from an event handler with
+`getConnection()`, and force a ping with `checkConnection()` (already called
+after any request that dies on the network, so the banner never lags).
+
+what it changes on `/pos` while offline:
+
+- card and instapay buttons are disabled (`needs internet`)
+- if one of them was already selected, the pay button is blocked with a line
+  telling the cashier to take cash
+- cash is left alone — track b makes it actually save locally
+
+`/kds` keeps its own realtime badge next to the banner. they answer different
+questions, so the words were split: **`realtime live`** = the socket,
+**`online`** = the internet. do not merge them.
+
+### double-charge guard (also track a)
+
+`clientId` used to be a fresh uuid per confirm dialog, so a checkout that died
+on the network could be re-sent as a **second** order. it is now
+`saleSeed + saleSignature(cart)` (`src/lib/pos/cart.ts`):
+
+- press pay again after a network wobble → same id → the db returns the first
+  order instead of charging twice
+- edit the cart / payment / note → new id → a changed sale can never come back
+  as the old order's total
+- a sale that lands rolls the seed, so two identical carts in a row are still
+  two orders
+
+do not go back to a per-tap uuid.
+
+---
+
+## 12) known gap: stock is not returned on a late cancel
+
+phase 3 pulls raw materials in `createOrder` right after the lines are written
+(`deduct_stock_for_order`, guarded by `orders.stock_deducted`).
+
+**nothing returns that stock if the order is cancelled afterwards.**
+
+where it stands today:
+
+- the kds cannot cancel: `ALLOWED_MOVES` in `src/lib/kds/orders.ts` only walks
+  `pending → preparing → ready → completed` (plus one step back). there is no
+  `cancelled` move anywhere in the ui
+- the pos only writes `cancelled` when the **order lines fail to insert** — that
+  path returns before the deduct rpc runs, so nothing was pulled. safe
+- so the gap can only be hit by cancelling a row **by hand** in the supabase
+  dashboard, and today that silently loses stock
+
+if you add a cancel button (phase 4 or later), it must not be a plain status
+update. it needs a `return_stock_for_order(order_id)` rpc that:
+
+- only acts when `stock_deducted = true`
+- adds each recipe/modifier quantity back inside postgres
+  (`current_stock = current_stock + n`, never read-then-write — that race is
+  already logged from the restock bug)
+- sets `stock_deducted = false` in the same statement so a double tap cannot
+  return the stock twice
+- lives in `supabase/phase4.sql`
+
+until then, a hand-cancelled order is fixed by restocking on
+`/admin/inventory`.

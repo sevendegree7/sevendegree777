@@ -70,7 +70,9 @@ how: `rpc deduct_stock_for_order(order_id)`
 
 if deduct rpc errors, the order still succeeds (kitchen still gets the ticket).
 
-**known gap:** if an order is cancelled *after* deduct, stock is not auto-returned. phase 4 may address.
+**known gap:** if an order is cancelled *after* deduct, stock is not auto-returned.
+written up in full — including why no ui can hit it today and what a fix must
+look like — in `PHASE-4-HANDOFF.md` section 12.
 
 ---
 
