@@ -324,6 +324,7 @@ the plan, one small pr per step:
    `createOrder`; `orders.client_id` is what makes a retry safe. it calls
    `setPendingSync()` so the banner says `syncing orders...` (done, see §18)
 6. **offline login** — the tablet must open a shift with no internet
+   (done, see §19)
 
 what does **not** change if the hardware turns out different later: the seam,
 the sync worker, the `client_id` rule, and the connection detection. only the
@@ -386,7 +387,7 @@ how the worker decides:
 | another origin (supabase) | ignored |
 | `?_rsc=` payloads | ignored. they carry a build id, and next falls back to a full page load, which we can answer |
 | `/_next/static/*`, icons | cache first. the name changes when the file does |
-| `/pos`, `/kds` | network first, keep the copy |
+| `/pos`, `/kds`, `/login` | network first, keep the copy |
 | any other page | network first, no copy — offline it gets the small "no internet" page |
 
 **it caches nothing up front.** it keeps what the app already fetched, so the
@@ -395,7 +396,12 @@ rule for the truck is: **open the app once on wifi after every deploy.**
 things to keep in mind:
 
 - a redirect is never cached. signed out, `/pos` answers with the login page,
-  and that copy would then be shown to a cashier who is signed in
+  and that copy would then be shown to a cashier who is signed in. the same
+  rule is what makes keeping `/login` safe: while somebody is signed in that
+  url only ever answers with a redirect, so the copy can only come from a
+  signed-out visit — see §19
+- **the worker was bumped to `v2` for that.** a version bump drops every old
+  copy, so the first open after this deploy has to be on wifi
 - the worker is **off in development** and the component actively unregisters
   any leftover one. a worker from a production build tested on localhost would
   keep serving that build and eat an afternoon
@@ -730,3 +736,106 @@ a record pointing at a product that no longer exists was refused and kept, with
 already marked uploaded was not sent again — it only tried the catch-up, and
 the day's total did not move. no console errors on either tab, no server
 errors.
+
+---
+
+## 19) offline login (built — step 6)
+
+the tablet opens a shift with no internet.
+
+signing in is a request to supabase, so with no line to supabase there is
+nothing anybody can type that would work. what the tablet can do is remember
+the shift it opened while it still had a connection, and let that shift carry
+on. that note is the whole of this step.
+
+what is in it:
+
+- `src/lib/auth/shift.ts` — the note, and `useShift()` to watch it
+- `src/components/shift-keeper.tsx` — writes the note while there is a server
+  to ask, and closes the screen when there is no note and no internet
+- `src/components/role-shell.tsx` — mounts the keeper, and sign out now closes
+  the shift on the device too
+- `src/app/login/page.tsx` — with no internet it offers the tablet's own shift
+  instead of a form that cannot work
+- `src/lib/auth/roles.ts` — `ROLE_OFFLINE_HOME`
+- `public/sw.js` — `/login` is kept, and `VERSION` is `v2`
+
+### the note
+
+`seven-degree.shift` in localstorage: user id, name, role, and when the server
+last confirmed it. **no token and no password.** it is not a credential and it
+cannot be used as one — the supabase session cookies are still the only thing
+that reaches the server, and the server checks the role again on every write.
+
+it is written in two places, both of them online: the login page on a
+successful sign in, and `ShiftKeeper` on every screen that opens with a
+connection. `RoleShell` mounts the keeper, so `/pos`, `/kds` and the admin
+pages all refresh it.
+
+it is cleared in two places: sign out, and a keeper check that comes back with
+no user. a check that **fails** clears nothing — a bad ping must not shut the
+tablet out of its own shift.
+
+### what the screens do with no internet
+
+| where | what happens |
+|-------|--------------|
+| `/pos`, `/kds` with a note | nothing new. the till sells cash, the board runs |
+| `/pos`, `/kds` with no note | a panel over the screen: `no shift on this tablet` |
+| `/pos`, `/kds`, wrong role | sent to that role's offline home |
+| `/login` with a note | `continue as <name>`, straight to the till |
+| `/login` with no note | says so, and that connecting once is the only way in |
+
+the no-note panel is drawn **on top of the screen** instead of sending anyone
+to `/login`, because that page needs a copy on the tablet and this is exactly
+the state where there might not be one. no round trip, no dead end.
+
+### the offline home is not the role home
+
+`ROLE_HOME` sends an admin to `/admin`. every number on that page is a
+question only the server can answer and the tablet keeps no copy of it, so
+continuing an offline shift as admin used to land on the "no internet" page.
+`ROLE_OFFLINE_HOME` sends admin to `/pos` instead — an owner carrying on with
+no internet is standing at the till.
+
+### a door, not a lock
+
+with a connection, the proxy decides who may open what. offline there is no
+proxy: the page came out of the service worker cache without touching the
+network, so this note is the only thing between a tablet somebody picked up
+and a till that takes orders. it is worth having — a signed-out tablet must
+not quietly sell — but the real lock is on the server, on upload, where every
+sale is priced and stamped and every role is checked again.
+
+anyone with the device can edit localstorage. that is true of the offline
+sales too. if the owner ever wants a real one, a pin on the shift note is the
+phase 5 job.
+
+### known wrinkles (accepted, not bugs)
+
+- **the offline login screen needs a copy.** the worker keeps what was
+  fetched, and while somebody is signed in `/login` only answers with a
+  redirect, which is never kept. the copy comes from a signed-out visit on
+  wifi — closing a shift at the end of the day is exactly that trip. without
+  one, `/login` offline is the small "no internet" page, and the tablet's real
+  way back in is `/pos`, which the panel handles
+- **a tablet that has never signed in cannot sell.** by design. there is
+  nothing to open a shift with, and inventing one on the device would be
+  inventing a login
+- **sign out offline drops the session locally** (`scope: "local"`) and does
+  not tell supabase, so the refresh token stays valid until it expires. sales
+  already on the tablet survive it and upload under whoever signs in next
+- the shift note says who the tablet is open as, **not** who took the sale.
+  offline sales carry no user at all; the server stamps the uploader (§18)
+- a screen that goes offline in the second between mount and the first keeper
+  check has no note yet and shows the panel. one reconnect fixes it, and only
+  the very first sign in on a tablet can hit it
+
+how it was tested: production build on `:3001`, service worker `v2`, **server
+killed** so every page came from the cache. `/login` opened offline and
+offered `continue as owner`, which landed on `/pos` with the full menu — that
+is the shift opened with no internet, end to end. `/pos` offline with the note
+ran as before, no panel. with the note removed it went straight to `no shift
+on this tablet` over the till. a cashier note on `/kds` was sent to `/pos`.
+back online, the keeper rewrote the note on load and nothing else changed. no
+console errors.
