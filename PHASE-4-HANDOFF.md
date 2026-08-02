@@ -317,7 +317,7 @@ the plan, one small pr per step:
 2. **pwa + menu cache** — the app opens with no internet and the menu is there
    (done, see §15)
 3. **offline cash checkout** — a sale with no internet is written locally and
-   marked pending
+   marked pending (done, see §16)
 4. **`/kds` reads local + cloud** — one board, whichever source the ticket
    came from
 5. **sync worker** — on reconnect, upload pending sales through the existing
@@ -415,3 +415,93 @@ things to keep in mind:
 how it was tested: `npm run build`, `next start`, open `/pos` and `/kds`,
 **kill the server**, then reload. both screens come up with the full menu, and
 an uncached page (`/admin`) gets the "no internet" page.
+
+---
+
+## 16) offline cash checkout (built — step 3)
+
+with no internet the till still takes cash. the sale is written on the tablet
+and waits there. **nothing uploads it yet — that is step 5.**
+
+what is in it:
+
+- `src/lib/data/order-store.ts` — the sales kept on the device
+- `src/lib/data/local.ts` — `createLocalSource()`, the offline `DataSource`
+- `src/lib/data/use-unsynced-sales.ts` — the count, as something a screen
+  can watch
+- `src/lib/data/index.ts` — `getDataSource()` now picks the source
+- `src/app/pos/pos-screen.tsx` — the wording, and the waiting-sales line
+
+### how the source is picked
+
+```ts
+getConnection() === "offline" ? localSource() : cloudSource()
+```
+
+**one line, one place.** the screens never know which one answered — they only
+read `.kind` when the wording has to tell the truth ("saved on this tablet"
+instead of "sent to kitchen").
+
+only a confirmed `"offline"` goes local. `"checking"` stays on the cloud on
+purpose: that is the first second after the app opens, and putting a sale on
+the tablet while the internet is fine only creates work for the sync worker.
+`"syncing"` is an online state, so it stays on the cloud too.
+
+the source is read **once, before the `await`**. the connection can flip while
+a sale is in flight, and the message has to describe where it actually went.
+
+### what the local source will and will not do
+
+| call | offline answer |
+|------|----------------|
+| `loadMenu()` | the cached menu, or "connect once, then it works offline" |
+| `loadKitchenOrders()` / `loadKitchenOrder()` | fails with a plain sentence. step 4 merges the local tickets in |
+| `moveStatus()` | fails. a ticket cannot move until the connection is back |
+| `submitOrder()` | cash only, priced from the cached menu, written to the device |
+
+a read it cannot answer **fails instead of returning stale data**. a kitchen
+acting on an old ticket is worse than a kitchen that knows it is blind.
+
+### the sale itself
+
+- **cash only.** the ui already blocks card and instapay offline; the source
+  refuses them again. a card sale saved on the tablet is a sale nobody
+  collected the money for
+- prices come from the cached menu through `cartTotal` / `lineUnitPrice` — the
+  same functions the server uses, so an offline receipt and an online one agree
+  to the piastre. the server prices it again from the db on upload anyway
+- the product / modifier / ownership checks mirror `createOrder`. a modifier
+  that does not belong to its product is refused here too
+- what is stored is a full `KitchenOrder`, the same shape the cloud returns, so
+  step 4 can put it on the board with no translation. `created_by` is `null`
+  (the server stamps the real user on upload) and `stock_deducted` is `false`
+  (stock is pulled by the server, never here)
+- a failed write **throws**, and the till says *"do not take payment"*. saying
+  "sold" when nothing was stored puts money in the drawer against an order that
+  does not exist
+
+### where they live
+
+localstorage, **one key per order**: `seven-degree.order.<client_id>`.
+
+not one json array, on purpose: `/pos` and `/kds` are often two tabs on the
+same tablet, and two tabs doing read-modify-write on one list lose a sale.
+nothing outside `order-store.ts` knows where they live, so indexeddb is a swap
+of one file if a day of orders ever gets big.
+
+`saveLocalOrder` returns the **existing** record untouched when the client_id
+is already there — the same thing the server does with `orders.client_id`. a
+re-tap must never become a second sale, and it must never reset a ticket the
+kitchen already started.
+
+the count on screen comes from `useUnsyncedSales()`, a `useSyncExternalStore`
+over the same store — the same one-watcher-per-tab shape as
+`use-connection.ts`. it also listens for the `storage` event, so a sale taken
+on `/pos` moves the number on `/kds` in the other tab.
+
+how it was tested: production build on `:3001`, `navigator.onLine` forced to
+false plus an `offline` event so the ping loop reports offline. two cash sales
+went through — the till said "saved on this tablet", the line read *"2 sales on
+this tablet waiting to upload"*, and localstorage held two records with
+`syncedOrderId: null` and the right totals. back online, the line survived a
+reload and the next sale said "sent to kitchen" with no new local record.
