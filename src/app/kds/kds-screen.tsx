@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { ConnectionBanner } from "@/components/connection-banner";
 import { checkConnection } from "@/lib/connection/use-connection";
+import { getDataSource } from "@/lib/data";
 import {
   KITCHEN_STATUSES,
   isKitchenStatus,
@@ -11,12 +12,10 @@ import {
   type KitchenOrder,
   type KitchenStatus,
 } from "@/lib/kds/orders";
-import { fetchKitchenOrder, fetchKitchenOrders } from "@/lib/kds/queries";
 import { useNow } from "@/lib/kds/use-now";
 import { createClient } from "@/lib/supabase/client";
 import type { Order, OrderStatus } from "@/types/database.types";
 
-import { moveOrderStatus } from "./actions";
 import { OrderCard } from "./components/order-card";
 import { StatusColumn } from "./components/status-column";
 
@@ -64,6 +63,8 @@ function readableError(message: string): string {
 // the kitchen board. holds every open ticket and keeps it in sync with
 // supabase realtime, no polling.
 export function KdsScreen({ initialOrders }: KdsScreenProps) {
+  // reads and writes go through the data source. this client is here for one
+  // thing only: the realtime channel, which is a cloud-only idea.
   const supabase = useMemo(() => createClient(), []);
 
   const [orders, setOrders] = useState<KitchenOrder[]>(() =>
@@ -95,16 +96,18 @@ export function KdsScreen({ initialOrders }: KdsScreenProps) {
   // read one ticket fresh from the db and put it on the board
   const applyOrder = useCallback(
     async (orderId: string): Promise<SyncOutcome> => {
-      const { order, error } = await fetchKitchenOrder(supabase, orderId);
+      const result = await getDataSource().loadKitchenOrder(orderId);
 
       if (!mounted.current) {
         return "error";
       }
 
-      if (error) {
-        setErrorText(readableError(error));
+      if (result.error !== null) {
+        setErrorText(readableError(result.error));
         return "error";
       }
+
+      const order = result.data;
 
       // off the board: completed, cancelled or gone
       if (!order || !isKitchenStatus(order.status)) {
@@ -128,7 +131,7 @@ export function KdsScreen({ initialOrders }: KdsScreenProps) {
 
       return order.items.length > 0 ? "items" : "empty";
     },
-    [supabase, dropOrder],
+    [dropOrder],
   );
 
   // read a ticket, then keep re-reading while it still has no lines.
@@ -175,20 +178,20 @@ export function KdsScreen({ initialOrders }: KdsScreenProps) {
 
   // full refetch, used on first subscribe and after any gap in the connection
   const reloadAll = useCallback(async () => {
-    const { orders: fresh, error } = await fetchKitchenOrders(supabase);
+    const result = await getDataSource().loadKitchenOrders();
 
     if (!mounted.current) {
       return;
     }
 
-    if (error) {
-      setErrorText(readableError(error));
+    if (result.error !== null) {
+      setErrorText(readableError(result.error));
       return;
     }
 
     setErrorText(null);
-    setOrders(sortByOldest(fresh));
-  }, [supabase]);
+    setOrders(sortByOldest(result.data));
+  }, []);
 
   // realtime: orders only. order_items is not in the publication, so an event
   // only tells us which ticket to re-read.
@@ -251,7 +254,8 @@ export function KdsScreen({ initialOrders }: KdsScreenProps) {
     setErrorText(null);
     setBusyIds((current) => [...current, order.id]);
 
-    void moveOrderStatus({ orderId: order.id, from: order.status, to })
+    void getDataSource()
+      .moveStatus({ orderId: order.id, from: order.status, to })
       .then((result) => {
         if (!mounted.current) {
           return;

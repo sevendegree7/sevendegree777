@@ -1,9 +1,12 @@
 import { RoleShell } from "@/components/role-shell";
+import type { MenuSnapshot } from "@/lib/data/types";
 import { createClient } from "@/lib/supabase/server";
 
 import { PosScreen } from "./pos-screen";
 
-// cashier home - loads the menu on the server then hands it to the touch ui
+// cashier home - loads the menu on the server then hands it to the touch ui.
+// if that read fails we hand over null and the screen asks the data source
+// itself, which is also the path a tablet with no internet will take.
 export default async function PosPage() {
   const supabase = await createClient();
 
@@ -21,24 +24,18 @@ export default async function PosPage() {
   const loadError =
     categoriesResult.error ?? productsResult.error ?? modifiersResult.error;
 
+  const initialMenu: MenuSnapshot | null = loadError
+    ? null
+    : {
+        categories: categoriesResult.data ?? [],
+        products: productsResult.data ?? [],
+        modifiers: modifiersResult.data ?? [],
+        fetchedAt: new Date().toISOString(),
+      };
+
   return (
     <RoleShell title="pos" roleLabel="cashier">
-      {loadError ? (
-        <div className="rounded-2xl bg-white p-6 shadow-sm">
-          <h2 className="text-xl font-medium">menu did not load</h2>
-          <p className="mt-2 text-stone-600">{loadError.message}</p>
-          <p className="mt-2 text-sm text-stone-500">
-            check the supabase keys in .env.local and that schema.sql and
-            seed.sql were run.
-          </p>
-        </div>
-      ) : (
-        <PosScreen
-          categories={categoriesResult.data ?? []}
-          products={productsResult.data ?? []}
-          modifiers={modifiersResult.data ?? []}
-        />
-      )}
+      <PosScreen initialMenu={initialMenu} />
     </RoleShell>
   );
 }

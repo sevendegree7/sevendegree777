@@ -49,6 +49,11 @@ make the truck runnable when internet dies, and harden the live shift.
 
 ## 2) offline model (agreed product rule)
 
+> **superseded in part — read §13 first.** the owner has since confirmed the
+> cashier and the kitchen are the **same single tablet**, so there is no lan and
+> no second device to reach. the `client_id` rules below still hold word for
+> word; the two-device transport does not.
+
 ```text
 TRUCK (no internet, same wifi)
   cashier device  <->  local orders  <->  kitchen device
@@ -292,3 +297,61 @@ update. it needs a `return_stock_for_order(order_id)` rpc that:
 
 until then, a hand-cancelled order is fixed by restocking on
 `/admin/inventory`.
+
+---
+
+## 13) offline: one tablet (owner decision)
+
+the truck has **one** tablet. the cashier screen and the kitchen screen are the
+same browser on the same device — the staff switch between `/pos` and `/kds`.
+
+that removes the hard part of §2. two tablets with no internet cannot pass an
+order to each other without something in the middle (a hub, a router with a
+mini pc, a signalling server for webrtc). one tablet needs none of it: both
+screens read the same local store in the same browser.
+
+the plan, one small pr per step:
+
+1. **data seam** — screens stop calling supabase and call one interface
+   (done, see §14)
+2. **pwa + menu cache** — the app opens with no internet and the menu is there
+3. **offline cash checkout** — a sale with no internet is written locally and
+   marked pending
+4. **`/kds` reads local + cloud** — one board, whichever source the ticket
+   came from
+5. **sync worker** — on reconnect, upload pending sales through the existing
+   `createOrder`; `orders.client_id` is what makes a retry safe. it calls
+   `setPendingSync()` so the banner says `syncing orders...`
+6. **offline login** — the tablet must open a shift with no internet
+
+what does **not** change if the hardware turns out different later: the seam,
+the sync worker, the `client_id` rule, and the connection detection. only the
+local store implementation would be swapped.
+
+---
+
+## 14) data source seam (built — step 2 of track b)
+
+`src/lib/data/` is the only door between the screens and where data lives.
+
+- `types.ts` — the `DataSource` interface, `MenuSnapshot`, and `Loaded<T>`
+  (`{ data, error }`, so a read either answers or explains). no `"use client"`
+  on purpose: server components type-import from it
+- `cloud.ts` — the online implementation. supabase for reads, the **existing
+  server actions** for writes
+- `index.ts` — `getDataSource()`. one memoised instance per tab
+
+rules:
+
+- **writes stay server actions.** the local source will queue and let the
+  server decide on sync. prices and role checks are never decided in the
+  browser, offline or not
+- when the local source lands, the choice goes **inside `getDataSource()` and
+  nowhere else**. a screen must never learn which source answered
+- realtime is deliberately **not** on the interface. `KdsScreen` still holds a
+  raw supabase client for its channel only — realtime is a cloud-only idea, and
+  the local source will need its own way to say "something changed"
+- `/pos` and `/kds` still read on the server for a fast first paint. `/pos` now
+  passes `initialMenu: MenuSnapshot | null`, and `null` means the screen asks
+  the data source itself — that fallback is the same code path the cached
+  offline menu will use
