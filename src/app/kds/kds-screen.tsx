@@ -5,9 +5,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ConnectionBanner } from "@/components/connection-banner";
 import { checkConnection } from "@/lib/connection/use-connection";
 import { getDataSource } from "@/lib/data";
+import { moveLocalStatus } from "@/lib/data/order-store";
+import { useLocalOrders } from "@/lib/data/use-local-orders";
 import {
   KITCHEN_STATUSES,
   isKitchenStatus,
+  mergeBoard,
   sortByOldest,
   type KitchenOrder,
   type KitchenStatus,
@@ -74,6 +77,14 @@ export function KdsScreen({ initialOrders }: KdsScreenProps) {
   const [busyIds, setBusyIds] = useState<string[]>([]);
   const [waitingIds, setWaitingIds] = useState<string[]>([]);
   const [errorText, setErrorText] = useState<string | null>(null);
+
+  // the sales this tablet took with no internet. they are not in supabase yet,
+  // so realtime knows nothing about them - this store is where they change.
+  const localOrders = useLocalOrders();
+  const localIds = useMemo(
+    () => new Set(localOrders.map((order) => order.id)),
+    [localOrders],
+  );
 
   const now = useNow();
 
@@ -252,6 +263,20 @@ export function KdsScreen({ initialOrders }: KdsScreenProps) {
 
   function moveOrder(order: KitchenOrder, to: OrderStatus) {
     setErrorText(null);
+
+    // a ticket that is still only on this tablet moves on this tablet, whether
+    // or not there is internet: supabase has no row to update yet. the store
+    // tells the board about it, the same way it tells the till.
+    if (localIds.has(order.id)) {
+      const moved = moveLocalStatus(order.id, order.status, to);
+
+      if (!moved.ok) {
+        setErrorText(moved.message);
+      }
+
+      return;
+    }
+
     setBusyIds((current) => [...current, order.id]);
 
     void getDataSource()
@@ -294,19 +319,24 @@ export function KdsScreen({ initialOrders }: KdsScreenProps) {
       });
   }
 
+  const board = useMemo(
+    () => mergeBoard(orders, localOrders),
+    [orders, localOrders],
+  );
+
   const byStatus = useMemo(() => {
     const grouped = new Map<KitchenStatus, KitchenOrder[]>(
       KITCHEN_STATUSES.map((status) => [status, [] as KitchenOrder[]]),
     );
 
-    for (const order of orders) {
+    for (const order of board) {
       if (isKitchenStatus(order.status)) {
         grouped.get(order.status)?.push(order);
       }
     }
 
     return grouped;
-  }, [orders]);
+  }, [board]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -353,8 +383,13 @@ export function KdsScreen({ initialOrders }: KdsScreenProps) {
                   now={now}
                   busy={busyIds.includes(order.id)}
                   waitingForItems={waitingIds.includes(order.id)}
+                  local={localIds.has(order.id)}
                   onMove={(to) => moveOrder(order, to)}
-                  onReload={() => void syncOrder(order.id)}
+                  onReload={() =>
+                    // there is nothing to re-read for a local ticket: this
+                    // tablet is where it lives
+                    localIds.has(order.id) ? undefined : void syncOrder(order.id)
+                  }
                 />
               ))}
             </StatusColumn>

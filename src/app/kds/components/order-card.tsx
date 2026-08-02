@@ -19,6 +19,8 @@ type OrderCardProps = {
   busy: boolean;
   // true while the lines are still being fetched for a brand new ticket
   waitingForItems: boolean;
+  // taken with no internet: this ticket exists on this tablet and nowhere else
+  local: boolean;
   onMove: (to: OrderStatus) => void;
   onReload: () => void;
 };
@@ -39,6 +41,7 @@ export function OrderCard({
   now,
   busy,
   waitingForItems,
+  local,
   onMove,
   onReload,
 }: OrderCardProps) {
@@ -60,6 +63,12 @@ export function OrderCard({
               ? ` · ${itemCount} ${itemCount === 1 ? "item" : "items"}`
               : ""}
           </p>
+
+          {local ? (
+            <p className="mt-1 inline-block rounded-lg bg-amber-100 px-2 py-1 text-sm font-medium text-amber-900">
+              on this tablet only
+            </p>
+          ) : null}
         </div>
         <span
           className={`rounded-lg px-2 py-1 text-sm font-medium ${

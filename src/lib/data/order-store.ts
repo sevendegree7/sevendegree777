@@ -1,6 +1,8 @@
 "use client";
 
-import type { KitchenOrder } from "@/lib/kds/orders";
+import type { MoveStatusResult } from "@/app/kds/actions";
+import { canMove, type KitchenOrder } from "@/lib/kds/orders";
+import type { OrderStatus } from "@/types/database.types";
 
 // sales taken while the tablet had no internet, kept until they are uploaded.
 //
@@ -115,37 +117,66 @@ export function countUnsyncedOrders(): number {
   return listUnsyncedOrders().length;
 }
 
-// how many sales are still only on this tablet, as something a screen can
-// watch. the same one-store-per-tab shape as the connection watcher, so a
-// count on screen can never drift from what is actually in storage.
+// the sales on this tablet as something a screen can watch: the till shows how
+// many are waiting, the kitchen board shows the tickets themselves. the same
+// one-store-per-tab shape as the connection watcher, so what is on screen can
+// never drift from what is actually in storage.
+//
+// same array until something really changes, or every notify would re-render
+// both screens for nothing.
+const EMPTY: LocalOrder[] = [];
+
+let cached: LocalOrder[] = EMPTY;
 let unsyncedCount = 0;
 let listeners: (() => void)[] = [];
+
+// everything a screen can see about a ticket. a status move changes no count,
+// so counting is not enough to know the board has to redraw.
+function signature(orders: LocalOrder[]): string {
+  return orders
+    .map(
+      (local) =>
+        `${local.order.client_id}~${local.order.status}~${local.order.updated_at}~${local.syncedOrderId ?? ""}`,
+    )
+    .join("|");
+}
 
 function onStorageEvent() {
   // fired by the other tab: the kitchen screen and the till are often both
   // open on the tablet
-  refreshUnsyncedCount();
+  refreshLocalOrders();
 }
 
-export function refreshUnsyncedCount(): void {
-  const next = countUnsyncedOrders();
+export function refreshLocalOrders(): void {
+  const next = listLocalOrders();
 
-  if (next === unsyncedCount) {
+  if (signature(next) === signature(cached)) {
     return;
   }
 
-  unsyncedCount = next;
+  cached = next;
+  unsyncedCount = next.filter((local) => local.syncedOrderId === null).length;
 
   for (const listener of listeners) {
     listener();
   }
 }
 
+export function getLocalOrdersSnapshot(): LocalOrder[] {
+  return cached;
+}
+
+// the server has none of these. one shared empty array, because a new one
+// every call is a render loop.
+export function getServerSnapshot(): LocalOrder[] {
+  return EMPTY;
+}
+
 export function getUnsyncedCount(): number {
   return unsyncedCount;
 }
 
-export function subscribeUnsyncedCount(listener: () => void): () => void {
+export function subscribeLocalOrders(listener: () => void): () => void {
   listeners = [...listeners, listener];
 
   if (listeners.length === 1) {
@@ -153,7 +184,7 @@ export function subscribeUnsyncedCount(listener: () => void): () => void {
   }
 
   // storage may already hold sales from before this screen opened
-  refreshUnsyncedCount();
+  refreshLocalOrders();
 
   return () => {
     listeners = listeners.filter((entry) => entry !== listener);
@@ -187,7 +218,7 @@ export function saveLocalOrder(order: KitchenOrder): LocalOrder {
   const record: LocalOrder = { order, syncedOrderId: null };
 
   window.localStorage.setItem(keyFor(clientId), JSON.stringify(record));
-  refreshUnsyncedCount();
+  refreshLocalOrders();
 
   return record;
 }
@@ -211,9 +242,59 @@ export function updateLocalOrder(
     return null;
   }
 
-  refreshUnsyncedCount();
+  refreshLocalOrders();
 
   return next;
+}
+
+// the board works in order ids, storage is keyed by client_id
+export function findLocalByOrderId(orderId: string): LocalOrder | null {
+  return (
+    listLocalOrders().find((local) => local.order.id === orderId) ?? null
+  );
+}
+
+// moves a ticket that is still only on this tablet.
+//
+// this has to work with the internet up as well as down: the sale is not in
+// supabase until the sync worker uploads it, so the server has nothing to
+// move. the answer matches the server action's shape so the board treats both
+// kinds of ticket the same way.
+export function moveLocalStatus(
+  orderId: string,
+  from: OrderStatus,
+  to: OrderStatus,
+): MoveStatusResult {
+  if (!canMove(from, to)) {
+    return { ok: false, message: "that status move is not allowed" };
+  }
+
+  const existing = findLocalByOrderId(orderId);
+
+  if (!existing || !existing.order.client_id) {
+    return { ok: false, message: "that ticket is not on this tablet" };
+  }
+
+  // the other tab already moved it. report where it landed instead of
+  // failing, exactly like the server does when the old status no longer
+  // matches, so both screens end up showing the same thing.
+  if (existing.order.status !== from) {
+    return { ok: true, status: existing.order.status, changed: false };
+  }
+
+  const moved = updateLocalOrder(existing.order.client_id, (current) => ({
+    ...current,
+    order: { ...current.order, status: to, updated_at: new Date().toISOString() },
+  }));
+
+  if (!moved) {
+    return {
+      ok: false,
+      message: "could not save that move on this tablet. try again.",
+    };
+  }
+
+  return { ok: true, status: to, changed: true };
 }
 
 export function removeLocalOrder(clientId: string): void {
@@ -227,5 +308,5 @@ export function removeLocalOrder(clientId: string): void {
     // nothing to do. it will be skipped as already synced.
   }
 
-  refreshUnsyncedCount();
+  refreshLocalOrders();
 }
