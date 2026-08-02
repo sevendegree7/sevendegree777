@@ -47,3 +47,13 @@ function localSource(): DataSource {
 export function getDataSource(): DataSource {
   return getConnection() === "offline" ? localSource() : cloudSource();
 }
+
+// the cloud source on purpose, whatever the connection says.
+//
+// exactly one caller: the sync worker. uploading is an online-only job by
+// definition, and if the connection flipped mid-run getDataSource() would hand
+// it the local source - which would write the sale to the tablet a second time
+// instead of sending it. screens must keep using getDataSource().
+export function getCloudSource(): DataSource {
+  return cloudSource();
+}

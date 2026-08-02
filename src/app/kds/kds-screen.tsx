@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { ConnectionBanner } from "@/components/connection-banner";
+import { OfflineSync } from "@/components/offline-sync";
 import { checkConnection } from "@/lib/connection/use-connection";
 import { getDataSource } from "@/lib/data";
 import { moveLocalStatus } from "@/lib/data/order-store";
@@ -340,6 +341,10 @@ export function KdsScreen({ initialOrders }: KdsScreenProps) {
 
   return (
     <div className="flex flex-col gap-4">
+      {/* the kitchen screen is often the one left open on the tablet, so it
+          uploads the waiting sales too - same worker, one run per tab */}
+      <OfflineSync />
+
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-3">
           <ConnectionBanner />
