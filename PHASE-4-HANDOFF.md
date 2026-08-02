@@ -1,13 +1,23 @@
-# phase 4 handoff — harden + offline lan sync
+# phase 4 handoff — harden + offline
 
-**this is the next workstream.** phase 1–3 are done in code on `main`.
+> **phase 4 is done and merged.** this file was written as a plan and then
+> grown as the work landed, so it reads in two halves:
+>
+> - **§0–§9 are the original plan**, and parts of it never happened — it says
+>   "lan sync" throughout, and there is no lan (§13)
+> - **§11–§20 are what was actually built**, one section per merged pr
+>
+> **if you are picking this project up, read §20 first**, then §13. between
+> them they cover what runs today, how to build and test it, and what is left.
+
+phase 1–3 are done in code on `main`.
 
 read first (in order):
 
 1. `HANDOFF.md`
 2. `PHASE-2-HANDOFF.md` (pos/kds contract + gotchas)
 3. `PHASE-3-HANDOFF.md` (inventory + admin + deduct)
-4. this file
+4. this file — §20, then §13, then the section for whatever you are changing
 
 do **not** redesign roles, order statuses, payment methods, or `client_id`.
 
@@ -839,3 +849,119 @@ ran as before, no panel. with the note removed it went straight to `no shift
 on this tablet` over the till. a cashier note on `/kds` was sent to `/pos`.
 back online, the keeper rewrote the note on load and nothing else changed. no
 console errors.
+
+---
+
+## 20) picking this up — start here
+
+phase 4 is **built and merged**. sections 1–9 of this file are the original
+plan and parts of it never happened: §2's two-device lan model was dropped when
+the owner confirmed there is only **one tablet** (§13). what actually shipped is
+§11–§19.
+
+if you are new to this file, read **§13** (the one-tablet decision), then this
+section, then whichever of §14–§19 touches what you are changing.
+
+### what the app does today
+
+online, exactly what phases 2 and 3 did. with no internet:
+
+- the app opens (it is installed as a pwa, `start_url` is `/pos`)
+- the menu is there, from the copy on the tablet
+- the till takes **cash** sales — card and instapay are blocked, they need a network
+- the kitchen board shows those sales next to the cloud ones and moves them
+- when the connection comes back the sales upload themselves, once, and the
+  kitchen ticket is walked to the status it already had
+- the tablet opens a shift with no internet, from a note it wrote while online
+
+### the map, by job
+
+| job | files |
+|-----|-------|
+| is there internet | `src/lib/connection/use-connection.ts`, `src/components/connection-banner.tsx` |
+| where data comes from | `src/lib/data/types.ts`, `cloud.ts`, `local.ts`, `index.ts` |
+| sales kept on the tablet | `src/lib/data/order-store.ts`, `use-unsynced-sales.ts`, `use-local-orders.ts` |
+| uploading them | `src/lib/data/sync.ts`, `src/components/offline-sync.tsx` |
+| the menu copy | `src/lib/data/menu-cache.ts` |
+| opening with no internet | `public/sw.js`, `src/app/manifest.ts`, `src/components/service-worker.tsx` |
+| who is on shift | `src/lib/auth/shift.ts`, `src/components/shift-keeper.tsx`, `src/lib/auth/roles.ts` |
+| the screens | `src/app/pos/pos-screen.tsx`, `src/app/kds/kds-screen.tsx`, `src/app/login/page.tsx` |
+| every write | `src/app/pos/actions.ts`, `src/app/kds/actions.ts` |
+
+### running it
+
+```bash
+npm install
+npm run dev
+```
+
+`npm run dev` is fine for everything **except** offline. the service worker is
+deliberately **off in development** — a worker from a production build tested on
+localhost keeps serving that build and eats an afternoon. to work on anything
+offline you need a real build:
+
+```bash
+npm run build
+npm run start -- -p 3001
+```
+
+you also need `.env.local` from the owner (supabase url + anon key). never
+commit it.
+
+### testing offline without unplugging anything
+
+two different things can be "offline", and they are tested differently:
+
+1. **the app thinks there is no internet.** in the page console:
+   ```js
+   Object.defineProperty(navigator, "onLine", { get: () => false, configurable: true });
+   dispatchEvent(new Event("offline"));
+   ```
+   that is what flips the banner, the data source, and the shift screens.
+2. **the pages themselves have to come from the tablet.** open `/pos` and
+   `/kds` once on the production build, then **kill the server** and reload.
+   the connection watcher pings supabase, not this server, so the app will
+   still say `online` — do (1) as well to get the real thing.
+
+things that will waste your time if you do not know them:
+
+- the worker keeps **only what was actually fetched** — pages *and* their js
+  chunks. so: open the app once on wifi after every deploy
+- bumping `VERSION` in `public/sw.js` throws every old copy away. do it
+  whenever you change that file
+- `/login` only gets a copy from a **signed-out** visit, because while somebody
+  is signed in that url answers with a redirect, and a redirect is never cached
+- the tablet has to be signed in as **admin**: one screen does the cashier's job
+  and the kitchen's, and those are two different roles on the server
+
+### rules that must not be broken
+
+- **writes stay server actions.** prices, roles and stock are decided on the
+  server, online or not. the tablet only says what was ordered
+- `orders.client_id` is the dedupe key. the same sale arriving twice returns the
+  first order instead of charging again — this is what makes retries safe
+- `getDataSource()` is the only place the cloud/local choice is made. the one
+  exception is the sync worker's `getCloudSource()`, and §18 says why
+- never invent order statuses, roles, or payment methods
+- the shift note is **not** a credential and must never become one — no token,
+  no password on the device (§19)
+
+### what is left
+
+in the order i would do it:
+
+1. **phase 5: deploy to vercel.** everything above only reaches a real tablet
+   over https — service workers do not run on a plain `http://192.168.x.x` box.
+   this is the step that makes the offline work usable on the truck
+2. **a dry run on the actual tablet**, on truck wifi. all of phase 4 was
+   verified in a desktop browser against a production build
+3. **stock is not returned on a late cancel** (§12). the sql for it is sketched
+   there and belongs in `supabase/phase4.sql`
+4. **the ticket number changes on upload** (§18). the fix is letting
+   `createOrder` accept the local order id — a browser choosing a primary key,
+   worth doing deliberately
+5. thermal printing (esc/pos), and the reprint stub from §3
+6. touch qa on the real device: button sizes on the till and the board
+7. there are **no automated tests** in this repo. everything so far was checked
+   by running it. if you add a test setup, start with `src/lib/pos/money.ts` and
+   `src/lib/pos/cart.ts` — pure functions, and they decide what customers pay
