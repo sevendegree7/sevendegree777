@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import { ConnectionBanner } from "@/components/connection-banner";
 import { checkConnection, useConnection } from "@/lib/connection/use-connection";
 import { getDataSource, type MenuSnapshot } from "@/lib/data";
+import { writeCachedMenu } from "@/lib/data/menu-cache";
 import {
   cartTotal,
   modifierSignature,
@@ -34,6 +35,10 @@ type PosScreenProps = {
 };
 
 type Feedback = { kind: "success" | "error"; text: string } | null;
+
+// how old a menu can be before we go and read it again. it only matters after
+// a spell offline: a tablet that just sat there keeps whatever it had.
+const MENU_MAX_AGE_MS = 5 * 60 * 1000;
 
 export function PosScreen({ initialMenu }: PosScreenProps) {
   const [menu, setMenu] = useState<MenuSnapshot | null>(initialMenu);
@@ -88,6 +93,47 @@ export function PosScreen({ initialMenu }: PosScreenProps) {
       cancelled = true;
     };
   }, [menu, menuAttempt]);
+
+  // keep a copy on the device. the fast path is read on the server, which
+  // never touches this tablet's storage, so the copy has to be made here.
+  useEffect(() => {
+    if (menu) {
+      writeCachedMenu(menu);
+    }
+  }, [menu]);
+
+  // the copy we sold from while offline can be days old. once the connection
+  // is back, read the real one again.
+  useEffect(() => {
+    if (connection !== "online" || !menu) {
+      return;
+    }
+
+    // an unreadable timestamp compares false here, so it counts as old
+    if (Date.now() - Date.parse(menu.fetchedAt) < MENU_MAX_AGE_MS) {
+      return;
+    }
+
+    let cancelled = false;
+
+    void (async () => {
+      const result = await getDataSource().loadMenu();
+
+      if (cancelled || result.error !== null) {
+        return;
+      }
+
+      // only ever move forward. a read that failed hands back the saved copy,
+      // and taking that would start this effect over and over.
+      if (Date.parse(result.data.fetchedAt) > Date.parse(menu.fetchedAt)) {
+        setMenu(result.data);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [connection, menu]);
 
   // modifiers grouped once so tapping a product is instant
   const modifiersByProduct = useMemo(() => {
