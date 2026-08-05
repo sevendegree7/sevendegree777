@@ -7,16 +7,32 @@ import { KdsScreen } from "./kds-screen";
 // kitchen home - first paint is server rendered, then realtime takes over
 export default async function KdsPage() {
   const supabase = await createClient();
-  const { orders, error } = await fetchKitchenOrders(supabase);
+  const { data: settings } = await supabase
+    .from("app_settings")
+    .select("kds_enabled")
+    .eq("id", "global")
+    .maybeSingle();
+
+  const kdsEnabled = settings?.kds_enabled ?? false;
+  const { orders, error } = kdsEnabled
+    ? await fetchKitchenOrders(supabase)
+    : { orders: [], error: null };
 
   return (
-    <RoleShell title="kitchen display" roleLabel="kitchen">
-      {error ? (
-        <div className="rounded-2xl bg-white p-6 shadow-sm">
-          <h2 className="text-xl font-medium">orders did not load</h2>
-          <p className="mt-2 text-stone-600">{error}</p>
-          <p className="mt-2 text-sm text-stone-500">
-            check the supabase keys in .env.local and that schema.sql was run.
+    <RoleShell title="Kitchen display" roleLabel="Kitchen">
+      {!kdsEnabled ? (
+        <div className="rounded-2xl bg-raised p-6 shadow-sm">
+          <h2 className="text-xl font-medium">Kitchen display is off</h2>
+          <p className="mt-2 text-muted">
+            Cashier-only mode is active. Admin can enable KDS from Settings.
+          </p>
+        </div>
+      ) : error ? (
+        <div className="rounded-2xl bg-raised p-6 shadow-sm">
+          <h2 className="text-xl font-medium">Orders did not load</h2>
+          <p className="mt-2 text-muted">{error}</p>
+          <p className="mt-2 text-sm text-muted">
+            Check the Supabase keys in .env.local and that schema.sql was run.
           </p>
         </div>
       ) : (

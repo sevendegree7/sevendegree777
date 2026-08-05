@@ -1,19 +1,166 @@
 @import "tailwindcss";
 
+/* the theme is a data attribute on <html>, set before paint by the inline
+   script in the root layout. "system" resolves to light or dark there, so css
+   only ever sees a concrete value. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
 :root {
-  --background: #f5f5f4;
-  --foreground: #1c1917;
+  /* anchor palette - the three the brand book calls non-negotiable */
+  --brand-navy: #0e1b2c;
+  --brand-cream: #fbf8ef;
+  --brand-saffron: #d4a24a;
+
+  /* one colour per cuisine. these carry the wayfinding on the till, so they
+     are the same values the packaging and the sleeves use. */
+  --cuisine-roma: #e04f3e;
+  --cuisine-tokyo: #3b5999;
+  --cuisine-riyadh: #d4a24a;
+  --cuisine-beirut: #7ba05b;
+  --cuisine-madrid: #6c0f2a;
+  --cuisine-paris: #d27b8c;
+  --cuisine-marrakesh: #7c2d26;
+
+  /* light: cream breathes, navy is the ink */
+  --surface: var(--brand-cream);
+  --raised: #fffdf7;
+  --sunken: #f2ece0;
+  --ink: var(--brand-navy);
+  --muted: color-mix(in srgb, var(--brand-navy) 58%, var(--brand-cream));
+  --line: color-mix(in srgb, var(--brand-navy) 14%, transparent);
+  --accent: #a97a24;
+  --accent-surface: var(--brand-saffron);
+  --accent-ink: var(--brand-navy);
+
+  /* states borrow from the cuisine set rather than invent new colour */
+  --ok: #5f8442;
+  --warn: #a97a24;
+  --danger: #c23a28;
+  --info: var(--cuisine-tokyo);
+
+  color-scheme: light;
+}
+
+[data-theme="dark"] {
+  /* dark is not a tint of light - the brand already runs cream on navy */
+  --surface: var(--brand-navy);
+  --raised: #16273c;
+  --sunken: #0a1421;
+  --ink: var(--brand-cream);
+  --muted: color-mix(in srgb, var(--brand-cream) 62%, var(--brand-navy));
+  --line: color-mix(in srgb, var(--brand-cream) 16%, transparent);
+  --accent: var(--brand-saffron);
+  --accent-surface: var(--brand-saffron);
+  --accent-ink: var(--brand-navy);
+
+  --ok: #8fb56f;
+  --warn: var(--brand-saffron);
+  --danger: #e8705c;
+  --info: #7b9ad6;
+
+  color-scheme: dark;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-surface: var(--surface);
+  --color-raised: var(--raised);
+  --color-sunken: var(--sunken);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-accent: var(--accent);
+  --color-accent-surface: var(--accent-surface);
+  --color-accent-ink: var(--accent-ink);
+
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-danger: var(--danger);
+  --color-info: var(--info);
+
+  --color-navy: var(--brand-navy);
+  --color-cream: var(--brand-cream);
+  --color-saffron: var(--brand-saffron);
+
+  --color-roma: var(--cuisine-roma);
+  --color-tokyo: var(--cuisine-tokyo);
+  --color-riyadh: var(--cuisine-riyadh);
+  --color-beirut: var(--cuisine-beirut);
+  --color-madrid: var(--cuisine-madrid);
+  --color-paris: var(--cuisine-paris);
+  --color-marrakesh: var(--cuisine-marrakesh);
+
+  --font-display: var(--font-fraunces), Georgia, serif;
+  --font-accent: var(--font-cormorant), Georgia, serif;
+  --font-sans: var(--font-plex-sans), var(--font-plex-arabic), system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, monospace;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-geist-sans), sans-serif;
+  background: var(--surface);
+  color: var(--ink);
+  font-family: var(--font-plex-sans), system-ui, sans-serif;
+}
+
+/* arabic gets its own face from the same family, so a language switch does not
+   change the texture of the page */
+[lang="ar"] body,
+[dir="rtl"] body {
+  font-family: var(--font-plex-arabic), var(--font-plex-sans), system-ui, sans-serif;
+}
+
+/* display type is the brand's voice. headings opt in rather than every h1 in
+   the app inheriting it, because the till wants plain legible text. */
+.font-display {
+  font-family: var(--font-fraunces), Georgia, serif;
+}
+
+.font-accent {
+  font-family: var(--font-cormorant), Georgia, serif;
+  font-style: italic;
+}
+
+/* the engraved hatch from the pattern library, used at very low contrast
+   behind hero areas only */
+.brand-hatch {
+  background-image: repeating-linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--ink) 7%, transparent) 0 1px,
+    transparent 1px 6px
+  );
+}
+
+/* printing a receipt.
+   the till is a full screen app, so printing it as-is would put the menu grid
+   and the cart on the paper. everything is hidden and only the receipt is put
+   back, which is why the paper carries a class rather than an id - there is
+   more than one copy on the page. */
+@media print {
+  /* paper is paper. a dark theme on screen must not print navy ink. */
+  :root {
+    color-scheme: light;
+  }
+
+  body * {
+    visibility: hidden;
+  }
+
+  .receipt-paper,
+  .receipt-paper * {
+    visibility: visible;
+  }
+
+  .receipt-paper {
+    position: relative;
+    /* 80mm thermal roll, minus the margin the print dialog adds */
+    width: 72mm;
+    background: #fff;
+    color: #000;
+    break-after: page;
+    page-break-after: always;
+  }
+
+  .receipt-paper:last-child {
+    break-after: auto;
+    page-break-after: auto;
+  }
 }

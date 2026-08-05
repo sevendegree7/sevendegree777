@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslate } from "@/lib/i18n/use-language";
 import { cartTotal, lineTotal, type CartLine } from "@/lib/pos/cart";
 import { formatMoney } from "@/lib/pos/money";
 import type { OrderType, PaymentMethod } from "@/types/database.types";
@@ -43,48 +44,46 @@ export function CartPanel({
   onOrderNotesChange,
   onCheckout,
 }: CartPanelProps) {
+  const { t } = useTranslate();
+
   const total = cartTotal(lines);
   const itemCount = lines.reduce((sum, line) => sum + line.quantity, 0);
 
   return (
-    <aside className="flex flex-col gap-4 rounded-2xl bg-white p-5 shadow-sm">
+    <aside className="flex flex-col gap-4 rounded-2xl border border-line bg-raised p-5">
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-stone-900">
-          cart{itemCount > 0 ? ` · ${itemCount}` : ""}
+        <h2 className="font-display text-lg font-semibold">
+          {t("cart.title")}
+          {itemCount > 0 ? ` · ${itemCount}` : ""}
         </h2>
         {lines.length > 0 ? (
           <button
             type="button"
             onClick={onClear}
-            className="text-sm text-stone-500 underline"
+            className="text-sm text-muted underline"
           >
-            clear
+            {t("cart.clear")}
           </button>
         ) : null}
       </div>
 
       {lines.length === 0 ? (
-        <p className="py-6 text-sm text-stone-500">
-          tap a product to start an order.
-        </p>
+        <p className="py-6 text-sm text-muted">{t("cart.empty")}</p>
       ) : (
         <ul className="flex flex-col gap-3">
           {lines.map((line) => (
-            <li
-              key={line.lineId}
-              className="rounded-xl border border-stone-200 p-3"
-            >
+            <li key={line.lineId} className="rounded-xl border border-line p-3">
               <div className="flex items-start justify-between gap-2">
-                <span className="text-base font-medium text-stone-900">
+                <span className="text-base font-medium">
                   {line.productName}
                 </span>
-                <span className="text-base text-stone-900">
+                <span className="font-mono text-base">
                   {formatMoney(lineTotal(line))}
                 </span>
               </div>
 
               {line.selectedModifiers.length > 0 ? (
-                <p className="mt-1 text-sm text-stone-600">
+                <p className="mt-1 text-sm text-muted">
                   {line.selectedModifiers
                     .map((modifier) => modifier.name)
                     .join(", ")}
@@ -92,7 +91,7 @@ export function CartPanel({
               ) : null}
 
               {line.notes ? (
-                <p className="mt-1 text-sm italic text-stone-500">
+                <p className="font-accent mt-1 text-sm text-muted">
                   {line.notes}
                 </p>
               ) : null}
@@ -101,22 +100,24 @@ export function CartPanel({
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
+                    aria-label="-"
                     onClick={() =>
                       onChangeQuantity(line.lineId, line.quantity - 1)
                     }
-                    className="h-10 w-10 rounded-lg border border-stone-300 text-lg"
+                    className="h-10 w-10 rounded-lg border border-line text-lg"
                   >
                     -
                   </button>
-                  <span className="w-7 text-center text-base font-medium">
+                  <span className="w-7 text-center font-mono text-base font-medium">
                     {line.quantity}
                   </span>
                   <button
                     type="button"
+                    aria-label="+"
                     onClick={() =>
                       onChangeQuantity(line.lineId, line.quantity + 1)
                     }
-                    className="h-10 w-10 rounded-lg border border-stone-300 text-lg"
+                    className="h-10 w-10 rounded-lg border border-line text-lg"
                   >
                     +
                   </button>
@@ -125,9 +126,9 @@ export function CartPanel({
                 <button
                   type="button"
                   onClick={() => onRemove(line.lineId)}
-                  className="text-sm text-red-600"
+                  className="text-sm text-danger"
                 >
-                  remove
+                  {t("cart.remove")}
                 </button>
               </div>
             </li>
@@ -142,27 +143,29 @@ export function CartPanel({
         onChange={onPaymentMethodChange}
       />
 
-      <label className="block text-sm text-stone-700">
-        order note
+      <label className="block text-sm text-muted">
+        {t("cart.orderNote")}
         <input
           type="text"
           value={orderNotes}
           onChange={(event) => onOrderNotesChange(event.target.value)}
-          placeholder="optional"
-          className="mt-2 w-full rounded-xl border border-stone-300 px-4 py-3 text-base outline-none focus:border-stone-800"
+          placeholder={t("cart.optional")}
+          className="mt-2 w-full rounded-xl border border-line bg-surface px-4 py-3 text-base text-ink outline-none focus:border-accent"
         />
       </label>
 
-      <div className="flex items-center justify-between border-t border-stone-200 pt-4">
-        <span className="text-base text-stone-600">total</span>
-        <span className="text-2xl font-semibold text-stone-900">
+      <div className="flex items-center justify-between border-t border-line pt-4">
+        <span className="text-base text-muted">{t("cart.total")}</span>
+        <span className="font-mono text-2xl font-semibold">
           {formatMoney(total)}
         </span>
       </div>
 
       {paymentBlocked ? (
-        <p className="rounded-xl bg-red-100 px-4 py-3 text-sm text-red-900">
-          {paymentMethod} needs internet. take cash, or wait for the connection.
+        <p className="rounded-xl bg-danger/15 px-4 py-3 text-sm text-danger">
+          {t("cart.paymentNeedsInternet", {
+            method: t(`payment.${paymentMethod}`),
+          })}
         </p>
       ) : null}
 
@@ -170,9 +173,9 @@ export function CartPanel({
         type="button"
         onClick={onCheckout}
         disabled={lines.length === 0 || submitting || paymentBlocked}
-        className="w-full rounded-xl bg-stone-900 px-4 py-4 text-lg font-medium text-white disabled:opacity-50"
+        className="w-full rounded-xl bg-navy px-4 py-4 text-lg font-semibold text-cream transition-opacity disabled:opacity-40 dark:bg-accent-surface dark:text-accent-ink"
       >
-        {submitting ? "sending..." : "pay"}
+        {submitting ? t("cart.sending") : t("cart.pay")}
       </button>
     </aside>
   );

@@ -2,8 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 
+import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
-import type { WasteReason } from "@/types/database.types";
+import type {
+  InventoryMode,
+  UserRole,
+  WasteReason,
+} from "@/types/database.types";
 
 export type ActionResult =
   | { ok: true; message?: string }
@@ -21,11 +26,11 @@ async function requireAdmin() {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("role")
+    .select("role, is_active")
     .eq("id", user.id)
     .maybeSingle();
 
-  if (!profile || profile.role !== "admin") {
+  if (!profile || !profile.is_active || profile.role !== "admin") {
     return { supabase, error: "admin only" as const };
   }
 
@@ -181,6 +186,42 @@ export async function logWaste(input: {
   return { ok: true, message: "waste logged" };
 }
 
+export async function logProductWaste(input: {
+  productId: string;
+  quantity: number;
+  reason: WasteReason;
+  notes: string | null;
+}): Promise<ActionResult> {
+  const { supabase, error } = await requireAdmin();
+  if (error) return { ok: false, message: error };
+
+  if (!Number.isFinite(input.quantity) || input.quantity <= 0) {
+    return { ok: false, message: "quantity must be positive" };
+  }
+
+  const { data, error: rpcError } = await supabase.rpc(
+    "log_product_waste_and_deduct",
+    {
+      p_product_id: input.productId,
+      p_quantity: input.quantity,
+      p_reason: input.reason,
+      p_notes: input.notes,
+    },
+  );
+
+  if (rpcError) return { ok: false, message: rpcError.message };
+
+  const payload = data as { ok?: boolean; message?: string } | null;
+  if (payload?.ok === false) {
+    return { ok: false, message: payload.message ?? "waste log failed" };
+  }
+
+  revalidatePath("/admin/inventory");
+  revalidatePath("/admin/inventory/waste");
+  revalidatePath("/admin");
+  return { ok: true, message: "finished-product waste logged" };
+}
+
 // change how much of an ingredient one product uses
 export async function upsertRecipe(input: {
   productId: string;
@@ -235,4 +276,195 @@ export async function deleteRecipe(recipeId: string): Promise<ActionResult> {
 
   revalidatePath("/admin/recipes");
   return { ok: true };
+}
+
+export async function updateOperatingSettings(input: {
+  kdsEnabled: boolean;
+  inventoryMode: InventoryMode;
+  receiptCopies: number;
+}): Promise<ActionResult> {
+  const { supabase, error } = await requireAdmin();
+  if (error) return { ok: false, message: error };
+
+  if (!["finished_goods", "ingredients"].includes(input.inventoryMode)) {
+    return { ok: false, message: "invalid inventory mode" };
+  }
+
+  if (!Number.isInteger(input.receiptCopies) || input.receiptCopies < 1 || input.receiptCopies > 3) {
+    return { ok: false, message: "receipt copies must be between 1 and 3" };
+  }
+
+  const { error: updateError } = await supabase
+    .from("app_settings")
+    .update({
+      kds_enabled: input.kdsEnabled,
+      inventory_mode: input.inventoryMode,
+      receipt_copies: input.receiptCopies,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", "global");
+
+  if (updateError) return { ok: false, message: updateError.message };
+
+  revalidatePath("/admin/settings");
+  revalidatePath("/pos");
+  revalidatePath("/kds");
+  return { ok: true, message: "operating settings saved" };
+}
+
+export async function receiveProductStock(input: {
+  productId: string;
+  addQuantity: string;
+}): Promise<ActionResult> {
+  const { supabase, error } = await requireAdmin();
+  if (error) return { ok: false, message: error };
+
+  const addQuantity = parseAmount(input.addQuantity);
+  if (addQuantity === null || addQuantity <= 0) {
+    return { ok: false, message: "add a positive quantity" };
+  }
+
+  const { data, error: rpcError } = await supabase.rpc(
+    "receive_product_stock",
+    { p_product_id: input.productId, p_add_quantity: addQuantity },
+  );
+
+  if (rpcError) return { ok: false, message: rpcError.message };
+
+  const payload = data as { ok?: boolean; message?: string } | null;
+  if (payload?.ok === false) {
+    return { ok: false, message: payload.message ?? "receive failed" };
+  }
+
+  revalidatePath("/admin/inventory");
+  revalidatePath("/admin");
+  return { ok: true, message: "finished stock received" };
+}
+
+export async function updateProductStockThreshold(input: {
+  productId: string;
+  minThreshold: string;
+}): Promise<ActionResult> {
+  const { supabase, error } = await requireAdmin();
+  if (error) return { ok: false, message: error };
+
+  const minThreshold = parseAmount(input.minThreshold);
+  if (minThreshold === null || minThreshold < 0) {
+    return { ok: false, message: "enter a threshold of zero or more" };
+  }
+
+  const { data, error: rpcError } = await supabase.rpc(
+    "set_product_stock_threshold",
+    { p_product_id: input.productId, p_min_threshold: minThreshold },
+  );
+
+  if (rpcError) return { ok: false, message: rpcError.message };
+
+  const payload = data as { ok?: boolean; message?: string } | null;
+  if (payload?.ok === false) {
+    return { ok: false, message: payload.message ?? "threshold failed" };
+  }
+
+  revalidatePath("/admin/inventory");
+  revalidatePath("/admin");
+  return { ok: true, message: "threshold saved" };
+}
+
+export async function createStaffAccount(input: {
+  name: string;
+  email: string;
+  password: string;
+  role: UserRole;
+}): Promise<ActionResult> {
+  const { error } = await requireAdmin();
+  if (error) return { ok: false, message: error };
+
+  const name = input.name.trim();
+  const email = input.email.trim().toLowerCase();
+
+  if (!name || !email.includes("@") || input.password.length < 8) {
+    return {
+      ok: false,
+      message: "enter a name, valid email, and password of at least 8 characters",
+    };
+  }
+
+  if (!["admin", "cashier", "kitchen"].includes(input.role)) {
+    return { ok: false, message: "invalid staff role" };
+  }
+
+  let admin;
+  try {
+    admin = createAdminClient();
+  } catch (caught) {
+    return {
+      ok: false,
+      message: caught instanceof Error ? caught.message : "staff setup is missing",
+    };
+  }
+
+  const { data, error: authError } = await admin.auth.admin.createUser({
+    email,
+    password: input.password,
+    email_confirm: true,
+    user_metadata: { name },
+  });
+
+  if (authError || !data.user) {
+    return { ok: false, message: authError?.message ?? "could not create user" };
+  }
+
+  const { error: profileError } = await admin.from("profiles").insert({
+    id: data.user.id,
+    name,
+    role: input.role,
+    is_active: true,
+  });
+
+  if (profileError) {
+    await admin.auth.admin.deleteUser(data.user.id);
+    return { ok: false, message: profileError.message };
+  }
+
+  revalidatePath("/admin/users");
+  return { ok: true, message: `${name} created` };
+}
+
+export async function setStaffActive(input: {
+  userId: string;
+  active: boolean;
+}): Promise<ActionResult> {
+  const { error, userId } = await requireAdmin();
+  if (error) return { ok: false, message: error };
+
+  if (input.userId === userId && !input.active) {
+    return { ok: false, message: "you cannot disable your own account" };
+  }
+
+  let admin;
+  try {
+    admin = createAdminClient();
+  } catch (caught) {
+    return {
+      ok: false,
+      message: caught instanceof Error ? caught.message : "staff setup is missing",
+    };
+  }
+
+  const { error: profileError } = await admin
+    .from("profiles")
+    .update({ is_active: input.active })
+    .eq("id", input.userId);
+
+  if (profileError) return { ok: false, message: profileError.message };
+
+  const { error: authError } = await admin.auth.admin.updateUserById(
+    input.userId,
+    { ban_duration: input.active ? "none" : "876000h" },
+  );
+
+  if (authError) return { ok: false, message: authError.message };
+
+  revalidatePath("/admin/users");
+  return { ok: true, message: input.active ? "account enabled" : "account disabled" };
 }

@@ -1,6 +1,8 @@
 "use server";
 
+import { isKitchenStatus, ticketNumber } from "@/lib/kds/orders";
 import { cartTotal, lineUnitPrice, type PricedLine } from "@/lib/pos/cart";
+import { isValidOrderId } from "@/lib/pos/order-id";
 import { createClient } from "@/lib/supabase/server";
 import type {
   OrderType,
@@ -22,6 +24,17 @@ export type CheckoutInput = {
   // one id per checkout attempt, unique in the db so a double tap cannot
   // create two orders. also what offline sync will dedupe on later.
   clientId: string;
+  // the id this order should be given. the till leaves it out and lets
+  // postgres choose. a sale taken offline sends the id the tablet already put
+  // on the ticket, so the number the kitchen has been reading does not change
+  // under them when the sale finally goes up.
+  orderId?: string;
+  // offline sales reserve the visible number they already showed. online
+  // sales leave these out and postgres allocates the next Egypt-day number.
+  ticketDate?: string;
+  ticketNumber?: number;
+  // used only by the local source. the server always reads the real setting.
+  kdsEnabled?: boolean;
   orderType: OrderType;
   paymentMethod: PaymentMethod;
   notes: string | null;
@@ -29,7 +42,13 @@ export type CheckoutInput = {
 };
 
 export type CheckoutResult =
-  | { ok: true; orderId: string; total: number }
+  | {
+      ok: true;
+      orderId: string;
+      total: number;
+      ticketDate: string;
+      ticketNumber: number;
+    }
   | { ok: false; message: string };
 
 // postgres unique_violation
@@ -49,6 +68,18 @@ export async function createOrder(
     }
   }
 
+  if (input.orderId !== undefined && !isValidOrderId(input.orderId)) {
+    return { ok: false, message: "this sale has an invalid id" };
+  }
+
+  if (
+    (input.ticketDate === undefined) !== (input.ticketNumber === undefined) ||
+    (input.ticketNumber !== undefined &&
+      (!Number.isInteger(input.ticketNumber) || input.ticketNumber < 1))
+  ) {
+    return { ok: false, message: "this sale has an invalid ticket number" };
+  }
+
   const supabase = await createClient();
 
   const {
@@ -63,11 +94,15 @@ export async function createOrder(
   // rls blocks this too, but a plain message beats a raw policy error
   const { data: profile } = await supabase
     .from("profiles")
-    .select("role")
+    .select("role, is_active")
     .eq("id", user.id)
     .maybeSingle();
 
-  if (!profile || (profile.role !== "cashier" && profile.role !== "admin")) {
+  if (
+    !profile ||
+    !profile.is_active ||
+    (profile.role !== "cashier" && profile.role !== "admin")
+  ) {
     return { ok: false, message: "this account cannot take orders" };
   }
 
@@ -161,18 +196,55 @@ export async function createOrder(
 
   const total = cartTotal(pricedLines);
 
+  const { data: allocated, error: ticketError } = await supabase.rpc(
+    "allocate_ticket_number",
+    {
+      p_ticket_date: input.ticketDate,
+      p_requested_number: input.ticketNumber ?? null,
+    },
+  );
+
+  if (ticketError || !allocated) {
+    return {
+      ok: false,
+      message:
+        "could not allocate a ticket number. run the launch migration and try again.",
+    };
+  }
+
+  const ticketDate =
+    input.ticketDate ??
+    new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Africa/Cairo",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date());
+
+  const { data: settings } = await supabase
+    .from("app_settings")
+    .select("kds_enabled")
+    .eq("id", "global")
+    .maybeSingle();
+
+  const initialStatus = settings?.kds_enabled ? "pending" : "completed";
+
   const { data: order, error: orderError } = await supabase
     .from("orders")
     .insert({
+      // only an offline sale sends one. postgres fills it in otherwise.
+      ...(input.orderId ? { id: input.orderId } : {}),
       client_id: input.clientId,
       total_amount: total,
       payment_method: input.paymentMethod,
       order_type: input.orderType,
-      status: "pending",
+      status: initialStatus,
       notes: input.notes,
       created_by: user.id,
+      ticket_date: ticketDate,
+      ticket_number: allocated,
     })
-    .select("id")
+    .select("id, ticket_date, ticket_number")
     .single();
 
   if (orderError || !order) {
@@ -180,7 +252,7 @@ export async function createOrder(
     if (orderError?.code === UNIQUE_VIOLATION) {
       const { data: existing } = await supabase
         .from("orders")
-        .select("id, total_amount")
+        .select("id, total_amount, ticket_date, ticket_number")
         .eq("client_id", input.clientId)
         .maybeSingle();
 
@@ -189,6 +261,8 @@ export async function createOrder(
           ok: true,
           orderId: existing.id,
           total: Number(existing.total_amount),
+          ticketDate: existing.ticket_date ?? ticketDate,
+          ticketNumber: existing.ticket_number ?? Number(allocated),
         };
       }
     }
@@ -227,7 +301,7 @@ export async function createOrder(
   // the insert event above fires before order_items are written.
   await supabase
     .from("orders")
-    .update({ status: "pending" })
+    .update({ status: initialStatus })
     .eq("id", order.id);
 
   // pull raw materials for this sale (idempotent in postgres)
@@ -240,5 +314,219 @@ export async function createOrder(
     console.error("stock deduct failed", deductError.message);
   }
 
-  return { ok: true, orderId: order.id, total };
+  return {
+    ok: true,
+    orderId: order.id,
+    total,
+    ticketDate: order.ticket_date ?? ticketDate,
+    ticketNumber: order.ticket_number ?? Number(allocated),
+  };
+}
+
+export type ReplaceOrderInput = CheckoutInput & {
+  // the ticket being corrected. it is voided once the new one is safely in.
+  replacesOrderId: string;
+};
+
+export type ReplaceOrderResult =
+  | {
+      ok: true;
+      orderId: string;
+      total: number;
+      ticketDate: string;
+      ticketNumber: number;
+      // short handle of the ticket that was voided, for the new receipt
+      replaced: string;
+      // the new sale is real either way. this is the part that did not go to
+      // plan, in words the cashier can act on.
+      warning?: string;
+    }
+  | { ok: false; message: string };
+
+// correcting a sale that was already rung up.
+//
+// there is no "edit an order" in the database and there should not be: the
+// ingredients have already been pulled, the ticket is already on the kitchen
+// screen, and the money is already counted. so an edit is two things - a new
+// sale, and a void of the old one - and the only real decision is the order
+// they happen in.
+//
+// the new sale goes first. if it fails, the customer still has the ticket they
+// started with, which is a bad afternoon. the other way round, a void that
+// works followed by a sale that fails leaves them with nothing at all, which
+// is a lost customer and a lost order the kitchen has already started making.
+export async function replaceOrder(
+  input: ReplaceOrderInput,
+): Promise<ReplaceOrderResult> {
+  if (!isValidOrderId(input.replacesOrderId)) {
+    return { ok: false, message: "that ticket has an invalid id" };
+  }
+
+  const supabase = await createClient();
+
+  const { data: original, error: readError } = await supabase
+    .from("orders")
+    .select("id, status, ticket_number")
+    .eq("id", input.replacesOrderId)
+    .maybeSingle();
+
+  if (readError) {
+    return { ok: false, message: "could not read that order. try again." };
+  }
+
+  if (!original) {
+    return { ok: false, message: "that order no longer exists" };
+  }
+
+  // a ticket that already left the board is not editable. completed means the
+  // customer has the food, and cancelled means this was already done once -
+  // editing either would put a second sale in the day's takings for one order.
+  if (!isKitchenStatus(original.status) && original.status !== "completed") {
+    return {
+      ok: false,
+      message: `that ticket is already ${original.status}, so it cannot be edited. ring a new sale instead.`,
+    };
+  }
+
+  // same path a fresh sale takes: prices re-read from the db, role checked,
+  // client_id deduped, stock pulled. nothing about an edit is trusted more
+  // than a normal checkout.
+  const created = await createOrder(input);
+
+  if (!created.ok) {
+    return created;
+  }
+
+  // now void the old one. matched against the statuses that are still on the
+  // board rather than the one read above, because the kitchen may have moved
+  // it while the new sale was being written - and a move along the board is no
+  // reason to refuse the void.
+  const { data: cancelled, error: cancelError } = await supabase
+    .from("orders")
+    .update({ status: "cancelled" })
+    .eq("id", input.replacesOrderId)
+    .in("status", ["pending", "preparing", "ready", "completed"])
+    .select("status")
+    .maybeSingle();
+
+  if (cancelError || !cancelled) {
+    // the kitchen finished it while this was in flight, so there are now two
+    // live tickets for one customer. say so plainly - this is the one outcome
+    // that needs a person.
+    return {
+      ok: true,
+      orderId: created.orderId,
+      total: created.total,
+      ticketDate: created.ticketDate,
+      ticketNumber: created.ticketNumber,
+      replaced: ticketNumber(original),
+      warning: `the new ticket is live, but #${ticketNumber(original)} was finished before it could be cancelled. void it from order history.`,
+    };
+  }
+
+  // the old sale's ingredients go back on the shelf. the rpc refuses to run
+  // twice - `stock_deducted` is cleared in the same transaction that adds the
+  // stock back - so a retry cannot restock the truck for free.
+  const { error: returnError } = await supabase.rpc("return_stock_for_order", {
+    p_order_id: input.replacesOrderId,
+  });
+
+  if (returnError) {
+    console.error("stock return failed", returnError.message);
+
+    return {
+      ok: true,
+      orderId: created.orderId,
+      total: created.total,
+      ticketDate: created.ticketDate,
+      ticketNumber: created.ticketNumber,
+      replaced: ticketNumber(original),
+      warning:
+        "the old ticket was cancelled, but its ingredients did not go back. fix it in admin > inventory.",
+    };
+  }
+
+  return {
+    ok: true,
+    orderId: created.orderId,
+    total: created.total,
+    ticketDate: created.ticketDate,
+    ticketNumber: created.ticketNumber,
+    replaced: ticketNumber(original),
+  };
+}
+
+export type CancelOrderResult =
+  | { ok: true; ticket: string; warning?: string }
+  | { ok: false; message: string };
+
+// cashier void from order history, including a completed sale discovered late.
+// stock return is idempotent, so a retry cannot add the same pieces twice.
+export async function cancelOrder(orderId: string): Promise<CancelOrderResult> {
+  if (!isValidOrderId(orderId)) {
+    return { ok: false, message: "that ticket has an invalid id" };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return { ok: false, message: "session expired. sign in again." };
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role, is_active")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  if (
+    !profile ||
+    !profile.is_active ||
+    (profile.role !== "cashier" && profile.role !== "admin")
+  ) {
+    return { ok: false, message: "this account cannot cancel orders" };
+  }
+
+  const { data: order, error: readError } = await supabase
+    .from("orders")
+    .select("id, status, ticket_number")
+    .eq("id", orderId)
+    .maybeSingle();
+
+  if (readError || !order) {
+    return { ok: false, message: "could not find that order" };
+  }
+
+  const ticket = ticketNumber(order);
+  if (order.status === "cancelled") return { ok: true, ticket };
+
+  const { data: cancelled, error: cancelError } = await supabase
+    .from("orders")
+    .update({ status: "cancelled" })
+    .eq("id", orderId)
+    .neq("status", "cancelled")
+    .select("id")
+    .maybeSingle();
+
+  if (cancelError || !cancelled) {
+    return { ok: false, message: "the order changed. refresh and try again." };
+  }
+
+  const { data: returned, error: returnError } = await supabase.rpc(
+    "return_stock_for_order",
+    { p_order_id: orderId },
+  );
+
+  const payload = returned as { ok?: boolean; message?: string } | null;
+  if (returnError || payload?.ok === false) {
+    return {
+      ok: true,
+      ticket,
+      warning:
+        "order cancelled, but stock return failed. check admin inventory.",
+    };
+  }
+
+  return { ok: true, ticket };
 }

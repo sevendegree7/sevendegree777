@@ -11,7 +11,13 @@ export default async function AdminPage() {
   // "today" is the truck's day, not the server's - vercel runs in utc
   const since = startOfTruckDayIso();
 
-  const [ordersResult, inventoryResult] = await Promise.all([
+  const [
+    ordersResult,
+    inventoryResult,
+    settingsResult,
+    productsResult,
+    productStockResult,
+  ] = await Promise.all([
     supabase
       .from("orders")
       .select("id, total_amount, payment_method, status, created_at")
@@ -21,10 +27,31 @@ export default async function AdminPage() {
       .from("inventory_items")
       .select("id, name, unit, current_stock, min_threshold")
       .order("name"),
+    supabase
+      .from("app_settings")
+      .select("inventory_mode")
+      .eq("id", "global")
+      .maybeSingle(),
+    supabase.from("products").select("id, name"),
+    supabase.from("product_stock").select("*"),
   ]);
 
   const orders = ordersResult.data ?? [];
-  const inventory = inventoryResult.data ?? [];
+  const finishedGoods =
+    (settingsResult.data?.inventory_mode ?? "finished_goods") ===
+    "finished_goods";
+  const productName = new Map(
+    (productsResult.data ?? []).map((product) => [product.id, product.name]),
+  );
+  const inventory = finishedGoods
+    ? (productStockResult.data ?? []).map((item) => ({
+        id: item.product_id,
+        name: productName.get(item.product_id) ?? "unknown product",
+        unit: "pcs",
+        current_stock: item.current_stock,
+        min_threshold: item.min_threshold,
+      }))
+    : (inventoryResult.data ?? []);
 
   const salesTotal = orders.reduce(
     (sum, order) => sum + Number(order.total_amount),
@@ -49,21 +76,24 @@ export default async function AdminPage() {
   );
 
   const schemaMissing =
-    inventoryResult.error?.message?.includes("does not exist") ||
-    inventoryResult.error?.code === "42P01";
+    (finishedGoods ? productStockResult.error : inventoryResult.error)?.message?.includes(
+      "does not exist",
+    ) ||
+    (finishedGoods ? productStockResult.error : inventoryResult.error)?.code ===
+      "42P01";
 
   return (
-    <AdminShell title="admin dashboard">
+    <AdminShell title="Admin dashboard">
       {schemaMissing ? (
-        <div className="rounded-2xl border border-amber-300 bg-amber-50 p-6">
+        <div className="rounded-2xl border border-warn bg-warn/10 p-6">
           <h2 className="text-lg font-medium text-amber-950">
             phase 3 sql not run yet
           </h2>
-          <p className="mt-2 text-sm text-amber-900">
+          <p className="mt-2 text-sm text-warn">
             open supabase sql editor and run{" "}
-            <code className="rounded bg-amber-100 px-1">supabase/phase3.sql</code>{" "}
+            <code className="rounded bg-warn/15 px-1">supabase/phase3.sql</code>{" "}
             then{" "}
-            <code className="rounded bg-amber-100 px-1">
+            <code className="rounded bg-warn/15 px-1">
               supabase/phase3-seed.sql
             </code>
             . after that refresh this page.
@@ -72,25 +102,25 @@ export default async function AdminPage() {
       ) : null}
 
       <div className="grid gap-4 md:grid-cols-3">
-        <div className="rounded-2xl bg-white p-5 shadow-sm">
-          <p className="text-sm text-stone-500">sales today</p>
+        <div className="rounded-2xl bg-raised p-5 shadow-sm">
+          <p className="text-sm text-muted">Sales today</p>
           <p className="mt-2 text-3xl font-semibold">{formatMoney(salesTotal)}</p>
-          <p className="mt-1 text-sm text-stone-500">{orders.length} orders</p>
+          <p className="mt-1 text-sm text-muted">{orders.length} orders</p>
         </div>
-        <div className="rounded-2xl bg-white p-5 shadow-sm">
-          <p className="text-sm text-stone-500">by payment today</p>
+        <div className="rounded-2xl bg-raised p-5 shadow-sm">
+          <p className="text-sm text-muted">By payment today</p>
           <ul className="mt-3 space-y-1 text-sm">
             <li>cash · {formatMoney(byPayment.cash)}</li>
             <li>card · {formatMoney(byPayment.card)}</li>
             <li>instapay · {formatMoney(byPayment.instapay)}</li>
           </ul>
         </div>
-        <div className="rounded-2xl bg-white p-5 shadow-sm">
-          <p className="text-sm text-stone-500">low stock</p>
+        <div className="rounded-2xl bg-raised p-5 shadow-sm">
+          <p className="text-sm text-muted">Low stock</p>
           <p className="mt-2 text-3xl font-semibold">{lowStock.length}</p>
           <Link
             href="/admin/inventory"
-            className="mt-2 inline-block text-sm text-stone-700 underline"
+            className="mt-2 inline-block text-sm text-muted underline"
           >
             open inventory
           </Link>
@@ -98,16 +128,16 @@ export default async function AdminPage() {
       </div>
 
       {lowStock.length > 0 ? (
-        <div className="mt-6 rounded-2xl bg-white p-5 shadow-sm">
-          <h2 className="text-lg font-medium">needs restock</h2>
-          <ul className="mt-3 divide-y divide-stone-100">
+        <div className="mt-6 rounded-2xl bg-raised p-5 shadow-sm">
+          <h2 className="text-lg font-medium">Needs restock</h2>
+          <ul className="mt-3 divide-y divide-line">
             {lowStock.map((item) => (
               <li
                 key={item.id}
                 className="flex items-center justify-between py-3 text-sm"
               >
                 <span>{item.name}</span>
-                <span className="text-red-700">
+                <span className="text-danger">
                   {Number(item.current_stock)} {item.unit} / min{" "}
                   {Number(item.min_threshold)}
                 </span>

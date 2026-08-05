@@ -39,9 +39,9 @@ const ITEM_RETRY_BASE_MS = 400;
 const ITEM_RETRY_MAX_MS = 3000;
 
 const CONNECTION_STYLE: Record<Connection, string> = {
-  connecting: "bg-stone-100 text-stone-700",
-  live: "bg-green-100 text-green-900",
-  offline: "bg-red-100 text-red-900",
+  connecting: "bg-sunken text-muted",
+  live: "bg-ok/15 text-ok",
+  offline: "bg-danger/15 text-danger",
 };
 
 // says whether the realtime socket is up, next to the banner that says whether
@@ -292,6 +292,12 @@ export function KdsScreen({ initialOrders }: KdsScreenProps) {
           return;
         }
 
+        // the ticket moved but the stock did not follow it back. the move
+        // still stands, so this is said and not treated as a failure.
+        if (result.stockWarning) {
+          setErrorText(result.stockWarning);
+        }
+
         // apply straight away, the realtime event confirms it a moment later
         const status = result.status;
 
@@ -358,14 +364,14 @@ export function KdsScreen({ initialOrders }: KdsScreenProps) {
         <button
           type="button"
           onClick={() => void reloadAll()}
-          className="rounded-xl border border-stone-300 px-4 py-2 text-sm text-stone-700"
+          className="rounded-xl border border-line px-4 py-2 text-sm text-muted"
         >
           refresh
         </button>
       </div>
 
       {errorText ? (
-        <p className="rounded-xl bg-red-100 px-4 py-3 text-sm text-red-900">
+        <p className="rounded-xl bg-danger/15 px-4 py-3 text-sm text-danger">
           {errorText}
         </p>
       ) : null}

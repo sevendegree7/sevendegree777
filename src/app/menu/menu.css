@@ -1,23 +1,33 @@
-/* customer-facing qr menu look */
+/* the qr menu.
+   it reads from the same tokens as the rest of the app, so a guest whose phone
+   is in night mode gets the navy version of the brand rather than a cream page
+   with the brightness turned down. */
 .menu-root {
-  --menu-ink: #2a1710;
-  --menu-paper: #f3e6d8;
-  --menu-cream: #fff8f0;
-  --menu-accent: #b45309;
-  --menu-muted: #7c5c4a;
-  --menu-line: rgba(42, 23, 16, 0.12);
-  color: var(--menu-ink);
-  font-family: var(--font-menu-body), system-ui, sans-serif;
-  background:
-    radial-gradient(ellipse 120% 80% at 10% -10%, #ffe8c8 0%, transparent 55%),
-    radial-gradient(ellipse 90% 60% at 100% 0%, #e8c4a0 0%, transparent 45%),
-    linear-gradient(180deg, #f7ebe0 0%, #efe0d0 40%, #e8d5c4 100%);
+  color: var(--ink);
+  background: var(--surface);
+  font-family: var(--font-plex-sans), system-ui, sans-serif;
 }
 
 .menu-root h1,
 .menu-root h2,
 .menu-root .menu-display {
-  font-family: var(--font-menu-display), Georgia, serif;
+  font-family: var(--font-fraunces), Georgia, serif;
+}
+
+.menu-root .menu-accent {
+  font-family: var(--font-cormorant), Georgia, serif;
+  font-style: italic;
+}
+
+/* concentric, from the pattern library. cartographic rather than decorative -
+   rings around cairo, sitting far enough back to stay a texture. */
+.menu-rings {
+  background-image:
+    repeating-radial-gradient(
+      circle at 50% 0%,
+      transparent 0 38px,
+      color-mix(in srgb, var(--accent) 22%, transparent) 38px 39px
+    );
 }
 
 @keyframes menu-rise {
@@ -45,4 +55,11 @@
 
 .menu-rise-delay-3 {
   animation-delay: 0.24s;
+}
+
+/* a guest who has asked for less movement gets the menu, not the entrance */
+@media (prefers-reduced-motion: reduce) {
+  .menu-rise {
+    animation: none;
+  }
 }

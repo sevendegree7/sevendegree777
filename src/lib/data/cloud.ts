@@ -1,8 +1,12 @@
 "use client";
 
 import { moveOrderStatus } from "@/app/kds/actions";
-import { createOrder } from "@/app/pos/actions";
-import { fetchKitchenOrder, fetchKitchenOrders } from "@/lib/kds/queries";
+import { createOrder, replaceOrder } from "@/app/pos/actions";
+import {
+  fetchKitchenOrder,
+  fetchKitchenOrders,
+  fetchRecentOrders,
+} from "@/lib/kds/queries";
 import { createClient } from "@/lib/supabase/client";
 
 import { readCachedMenu, writeCachedMenu } from "./menu-cache";
@@ -70,8 +74,17 @@ export function createCloudSource(): DataSource {
       return error ? loadFailed(error) : loaded(order);
     },
 
+    async loadRecentOrders(sinceIso) {
+      const { orders, error } = await fetchRecentOrders(supabase, sinceIso);
+      return error ? loadFailed(error) : loaded(orders);
+    },
+
     submitOrder(input) {
       return createOrder(input);
+    },
+
+    replaceOrder(input) {
+      return replaceOrder(input);
     },
 
     moveStatus(input) {

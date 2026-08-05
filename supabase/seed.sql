@@ -1,29 +1,58 @@
--- sample menu for seven degree - run after schema.sql
--- safe to re-run only on empty menu tables
+-- the seven fusions menu for a fresh local database.
+--
+-- no hardcoded uuids: postgres assigns them. join by name so the same seed can
+-- re-run against a database that already has some of these rows.
+--
+-- prices are the deck's numbers and are temporary until the client signs off.
 
-insert into public.categories (id, name, icon, color, sort_order)
-values
-  ('11111111-1111-1111-1111-111111111101', 'cinnabon', 'roll', '#c45c26', 1),
-  ('11111111-1111-1111-1111-111111111102', 'croissants', 'croissant', '#d4a017', 2),
-  ('11111111-1111-1111-1111-111111111103', 'brownies', 'brownie', '#5c3317', 3),
-  ('11111111-1111-1111-1111-111111111104', 'beverages', 'cup', '#2f6fed', 4);
+insert into public.categories (name, color, sort_order)
+select v.name, v.color, v.sort_order
+from (
+  values
+    ('roma', '#E04F3E', 1),
+    ('tokyo', '#3B5999', 2),
+    ('riyadh', '#D4A24A', 3),
+    ('beirut', '#7BA05B', 4),
+    ('madrid', '#6C0F2A', 5),
+    ('paris', '#D27B8C', 6),
+    ('marrakesh', '#7C2D26', 7),
+    ('boxes', '#0E1B2C', 8)
+) as v (name, color, sort_order)
+where not exists (
+  select 1 from public.categories c where c.name = v.name
+);
 
-insert into public.products (id, category_id, name, base_price, is_available, sort_order)
-values
-  ('22222222-2222-2222-2222-222222222201', '11111111-1111-1111-1111-111111111101', 'classic cinnabon', 45.00, true, 1),
-  ('22222222-2222-2222-2222-222222222202', '11111111-1111-1111-1111-111111111101', 'nutella cinnabon', 55.00, true, 2),
-  ('22222222-2222-2222-2222-222222222203', '11111111-1111-1111-1111-111111111102', 'butter croissant', 25.00, true, 1),
-  ('22222222-2222-2222-2222-222222222204', '11111111-1111-1111-1111-111111111102', 'chocolate croissant', 30.00, true, 2),
-  ('22222222-2222-2222-2222-222222222205', '11111111-1111-1111-1111-111111111103', 'classic brownie', 35.00, true, 1),
-  ('22222222-2222-2222-2222-222222222206', '11111111-1111-1111-1111-111111111103', 'walnut brownie', 40.00, true, 2),
-  ('22222222-2222-2222-2222-222222222207', '11111111-1111-1111-1111-111111111104', 'turkish coffee', 20.00, true, 1),
-  ('22222222-2222-2222-2222-222222222208', '11111111-1111-1111-1111-111111111104', 'fresh juice', 30.00, true, 2);
+insert into public.products (category_id, name, base_price, is_available, sort_order)
+select c.id, v.name, v.price, true, v.sort_order
+from (
+  values
+    ('roma', 'tiramisu umm ali', 220.00, 1),
+    ('tokyo', 'pistachio mochi', 200.00, 2),
+    ('riyadh', 'saffron kunafa', 210.00, 3),
+    ('beirut', 'konafa cheesecake', 200.00, 4),
+    ('madrid', 'churros konafa', 190.00, 5),
+    ('paris', 'rose eclair', 190.00, 6),
+    ('marrakesh', 'pomegranate panna cotta', 180.00, 7),
+    ('boxes', 'small box · 6', 400.00, 8),
+    ('boxes', 'the seven · box', 775.00, 9),
+    ('boxes', 'large bento · 24', 1500.00, 10)
+) as v (category, name, price, sort_order)
+join public.categories c on c.name = v.category
+where not exists (
+  select 1 from public.products p where p.name = v.name
+);
 
 insert into public.modifiers (product_id, name, extra_price)
-values
-  ('22222222-2222-2222-2222-222222222201', 'extra icing', 5.00),
-  ('22222222-2222-2222-2222-222222222201', 'no icing', 0.00),
-  ('22222222-2222-2222-2222-222222222202', 'extra nutella', 10.00),
-  ('22222222-2222-2222-2222-222222222205', 'extra chocolate sauce', 5.00),
-  ('22222222-2222-2222-2222-222222222205', 'no nuts', 0.00),
-  ('22222222-2222-2222-2222-222222222206', 'extra walnut', 5.00);
+select p.id, v.name, v.extra_price
+from (
+  values
+    ('tiramisu umm ali', 'extra cocoa dust', 0.00),
+    ('tiramisu umm ali', 'extra pistachio crumble', 25.00),
+    ('saffron kunafa', 'extra rose-cardamom syrup', 20.00)
+) as v (product, name, extra_price)
+join public.products p on p.name = v.product
+where not exists (
+  select 1
+  from public.modifiers m
+  where m.product_id = p.id and m.name = v.name
+);

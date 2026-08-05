@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 
+import { useTranslate } from "@/lib/i18n/use-language";
 import { lineTotal, lineUnitPrice } from "@/lib/pos/cart";
 import { formatMoney } from "@/lib/pos/money";
 import type {
@@ -28,6 +29,8 @@ export function ModifierModal({
   onCancel,
   onAdd,
 }: ModifierModalProps) {
+  const { t } = useTranslate();
+
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [quantity, setQuantity] = useState(1);
   const [notes, setNotes] = useState("");
@@ -68,18 +71,20 @@ export function ModifierModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-stone-900/40 p-4 sm:items-center">
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-navy/60 p-4 sm:items-center">
       {/* backdrop tap closes without adding anything */}
       <button
         type="button"
-        aria-label="close"
+        aria-label={t("modifier.cancel")}
         onClick={onCancel}
         className="absolute inset-0 h-full w-full cursor-default"
       />
 
-      <div className="relative w-full max-w-md rounded-2xl bg-white p-6 shadow-lg">
-        <p className="text-sm text-stone-500">add to cart</p>
-        <h2 className="mt-1 text-2xl font-semibold text-stone-900">
+      <div className="relative w-full max-w-md rounded-2xl border border-line bg-raised p-6 shadow-xl">
+        <p className="font-mono text-[0.7rem] uppercase tracking-[0.16em] text-muted">
+          {t("modifier.addToCart")}
+        </p>
+        <h2 className="font-display mt-1 text-2xl font-semibold">
           {product.name}
         </h2>
 
@@ -91,10 +96,10 @@ export function ModifierModal({
             return (
               <label
                 key={modifier.id}
-                className={`flex cursor-pointer items-center justify-between rounded-xl border px-4 py-3 ${
+                className={`flex cursor-pointer items-center justify-between rounded-xl border px-4 py-3 transition-colors ${
                   checked
-                    ? "border-stone-900 bg-stone-50"
-                    : "border-stone-300 bg-white"
+                    ? "border-accent bg-accent-surface/10"
+                    : "border-line bg-surface"
                 }`}
               >
                 <span className="flex items-center gap-3">
@@ -102,14 +107,12 @@ export function ModifierModal({
                     type="checkbox"
                     checked={checked}
                     onChange={() => toggle(modifier.id)}
-                    className="h-5 w-5"
+                    className="h-5 w-5 accent-[var(--accent-surface)]"
                   />
-                  <span className="text-base text-stone-900">
-                    {modifier.name}
-                  </span>
+                  <span className="text-base">{modifier.name}</span>
                 </span>
-                <span className="text-sm text-stone-600">
-                  {extra > 0 ? `+ ${formatMoney(extra)}` : "free"}
+                <span className="font-mono text-sm text-muted">
+                  {extra > 0 ? `+ ${formatMoney(extra)}` : t("modifier.free")}
                 </span>
               </label>
             );
@@ -117,40 +120,42 @@ export function ModifierModal({
         </div>
 
         <div className="mt-5 flex items-center justify-between">
-          <span className="text-sm text-stone-700">quantity</span>
+          <span className="text-sm text-muted">{t("modifier.quantity")}</span>
           <div className="flex items-center gap-3">
             <button
               type="button"
+              aria-label="-"
               onClick={() => setQuantity((current) => Math.max(1, current - 1))}
-              className="h-11 w-11 rounded-xl border border-stone-300 text-xl"
+              className="h-11 w-11 rounded-xl border border-line text-xl"
             >
               -
             </button>
-            <span className="w-8 text-center text-lg font-medium">
+            <span className="w-8 text-center font-mono text-lg font-medium">
               {quantity}
             </span>
             <button
               type="button"
+              aria-label="+"
               onClick={() => setQuantity((current) => current + 1)}
-              className="h-11 w-11 rounded-xl border border-stone-300 text-xl"
+              className="h-11 w-11 rounded-xl border border-line text-xl"
             >
               +
             </button>
           </div>
         </div>
 
-        <p className="mt-2 text-right text-sm text-stone-600">
-          {formatMoney(unitPrice)} each
+        <p className="mt-2 text-end font-mono text-sm text-muted">
+          {t("modifier.each", { price: formatMoney(unitPrice) })}
         </p>
 
-        <label className="mt-4 block text-sm text-stone-700">
-          note for the kitchen
+        <label className="mt-4 block text-sm text-muted">
+          {t("modifier.kitchenNote")}
           <input
             type="text"
             value={notes}
             onChange={(event) => setNotes(event.target.value)}
-            placeholder="optional"
-            className="mt-2 w-full rounded-xl border border-stone-300 px-4 py-3 text-base outline-none focus:border-stone-800"
+            placeholder={t("cart.optional")}
+            className="mt-2 w-full rounded-xl border border-line bg-surface px-4 py-3 text-base text-ink outline-none focus:border-accent"
           />
         </label>
 
@@ -158,9 +163,9 @@ export function ModifierModal({
           <button
             type="button"
             onClick={onCancel}
-            className="flex-1 rounded-xl border border-stone-300 px-4 py-3 text-base"
+            className="flex-1 rounded-xl border border-line px-4 py-3 text-base"
           >
-            cancel
+            {t("modifier.cancel")}
           </button>
           <button
             type="button"
@@ -171,9 +176,9 @@ export function ModifierModal({
                 notes.trim() ? notes.trim() : null,
               )
             }
-            className="flex-[2] rounded-xl bg-stone-900 px-4 py-3 text-base font-medium text-white"
+            className="flex-[2] rounded-xl bg-navy px-4 py-3 text-base font-semibold text-cream dark:bg-accent-surface dark:text-accent-ink"
           >
-            add · {formatMoney(lineTotal(draftLine))}
+            {t("modifier.add")} · {formatMoney(lineTotal(draftLine))}
           </button>
         </div>
       </div>

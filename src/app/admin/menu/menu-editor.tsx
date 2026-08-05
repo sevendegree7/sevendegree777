@@ -55,12 +55,12 @@ function ProductRow({
   }
 
   return (
-    <div className="rounded-2xl bg-white p-4 shadow-sm">
+    <div className="rounded-2xl bg-raised p-4 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="font-medium">{product.name}</p>
-          <p className="text-sm text-stone-500">{categoryName}</p>
-          <p className="mt-1 text-xs text-stone-400">
+          <p className="text-sm text-muted">{categoryName}</p>
+          <p className="mt-1 text-xs text-muted">
             current {formatMoney(Number(product.base_price))}
           </p>
         </div>
@@ -73,7 +73,7 @@ function ProductRow({
               step="0.01"
               value={price}
               onChange={(e) => setPrice(e.target.value)}
-              className="mt-1 block w-28 rounded-xl border border-stone-300 px-3 py-2"
+              className="mt-1 block w-28 rounded-xl border border-line px-3 py-2"
             />
           </label>
           <label className="flex items-center gap-2 pb-2 text-sm">
@@ -88,14 +88,14 @@ function ProductRow({
             type="button"
             disabled={pending}
             onClick={save}
-            className="rounded-xl bg-stone-900 px-4 py-2 text-sm text-white disabled:opacity-60"
+            className="rounded-xl bg-navy dark:bg-accent-surface dark:text-accent-ink px-4 py-2 text-sm text-cream disabled:opacity-60"
           >
             {pending ? "saving..." : "save"}
           </button>
         </div>
       </div>
       {message ? (
-        <p className="mt-2 text-sm text-stone-600">{message}</p>
+        <p className="mt-2 text-sm text-muted">{message}</p>
       ) : null}
     </div>
   );

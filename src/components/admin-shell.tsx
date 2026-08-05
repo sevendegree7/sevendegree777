@@ -7,12 +7,14 @@ import type { ReactNode } from "react";
 import { RoleShell } from "@/components/role-shell";
 
 const LINKS = [
-  { href: "/admin", label: "overview" },
-  { href: "/admin/menu", label: "menu" },
-  { href: "/admin/inventory", label: "inventory" },
-  { href: "/admin/inventory/waste", label: "waste" },
-  { href: "/admin/recipes", label: "recipes" },
-  { href: "/admin/reports", label: "reports" },
+  { href: "/admin", label: "Overview" },
+  { href: "/admin/menu", label: "Menu" },
+  { href: "/admin/inventory", label: "Inventory" },
+  { href: "/admin/inventory/waste", label: "Waste" },
+  { href: "/admin/recipes", label: "Recipes" },
+  { href: "/admin/reports", label: "Reports" },
+  { href: "/admin/users", label: "Staff" },
+  { href: "/admin/settings", label: "Settings" },
 ] as const;
 
 type AdminShellProps = {
@@ -25,7 +27,7 @@ export function AdminShell({ title, children }: AdminShellProps) {
   const pathname = usePathname();
 
   return (
-    <RoleShell title={title} roleLabel="admin">
+    <RoleShell title={title} roleLabel="Admin">
       <nav className="mb-6 flex flex-wrap gap-2">
         {LINKS.map((link) => {
           const active =
@@ -42,8 +44,8 @@ export function AdminShell({ title, children }: AdminShellProps) {
               href={link.href}
               className={
                 active
-                  ? "rounded-xl bg-stone-900 px-4 py-2 text-sm text-white"
-                  : "rounded-xl border border-stone-300 bg-white px-4 py-2 text-sm text-stone-700"
+                  ? "rounded-xl bg-navy px-4 py-2 text-sm font-medium text-cream dark:bg-accent-surface dark:text-accent-ink"
+                  : "rounded-xl border border-line bg-raised px-4 py-2 text-sm text-muted hover:text-ink"
               }
             >
               {link.label}

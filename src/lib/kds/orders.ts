@@ -21,9 +21,9 @@ export const NEXT_STATUS: Record<KitchenStatus, OrderStatus> = {
 };
 
 export const NEXT_STATUS_LABEL: Record<KitchenStatus, string> = {
-  pending: "start",
-  preparing: "mark ready",
-  ready: "picked up",
+  pending: "Start",
+  preparing: "Mark ready",
+  ready: "Picked up",
 };
 
 // small undo for mis-taps, kitchens tap the wrong card all the time
@@ -32,20 +32,32 @@ export const PREVIOUS_STATUS: Partial<Record<KitchenStatus, KitchenStatus>> = {
   ready: "preparing",
 };
 
-// every move the kds is allowed to make, checked again on the server
+// every move the kds is allowed to make, checked again on the server.
+//
+// `cancelled` is on every row and is not a step along the pipeline - it is a
+// jump off it. the customer walks away, or the ticket was rung up wrong, and
+// that can happen while the ticket is waiting, being made, or sitting ready.
+// the server turns this move into two things, not one: the status, and the
+// raw materials going back on the shelf.
 export const ALLOWED_MOVES: Record<KitchenStatus, OrderStatus[]> = {
-  pending: ["preparing"],
-  preparing: ["ready", "pending"],
-  ready: ["completed", "preparing"],
+  pending: ["preparing", "cancelled"],
+  preparing: ["ready", "pending", "cancelled"],
+  ready: ["completed", "preparing", "cancelled"],
 };
 
 export function canMove(from: OrderStatus, to: OrderStatus): boolean {
   return isKitchenStatus(from) && ALLOWED_MOVES[from].includes(to);
 }
 
-// short human handle for a ticket, same slice the pos shows the cashier
-export function ticketNumber(orderId: string): string {
-  return orderId.slice(0, 8);
+// the daily number is what staff and customers say out loud. accepting a
+// string keeps old/offline records readable until they are migrated.
+export function ticketNumber(
+  order: string | Pick<Order, "id" | "ticket_number">,
+): string {
+  if (typeof order === "string") return order.slice(0, 8);
+  return Number.isInteger(order.ticket_number)
+    ? String(order.ticket_number)
+    : order.id.slice(0, 8);
 }
 
 // how long the ticket has been waiting, in whole minutes

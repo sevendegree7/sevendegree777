@@ -3,16 +3,36 @@ import { formatMoney } from "@/lib/pos/money";
 import { startOfTruckDayIso, truckDayKey } from "@/lib/reports/dates";
 import { createClient } from "@/lib/supabase/server";
 
-export default async function AdminReportsPage() {
+export default async function AdminReportsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ cashier?: string }>;
+}) {
   const supabase = await createClient();
   const since = startOfTruckDayIso(30);
+  const selectedCashier = (await searchParams).cashier ?? "";
 
-  const { data: orders, error } = await supabase
+  let ordersQuery = supabase
     .from("orders")
-    .select("id, total_amount, payment_method, order_type, status, created_at")
+    .select(
+      "id, total_amount, payment_method, order_type, status, created_at, created_by",
+    )
     .gte("created_at", since)
     .neq("status", "cancelled")
     .order("created_at", { ascending: false });
+
+  if (selectedCashier) {
+    ordersQuery = ordersQuery.eq("created_by", selectedCashier);
+  }
+
+  const [{ data: orders, error }, { data: cashiers }] = await Promise.all([
+    ordersQuery,
+    supabase
+      .from("profiles")
+      .select("id, name, is_active")
+      .eq("role", "cashier")
+      .order("name"),
+  ]);
 
   const list = orders ?? [];
 
@@ -64,24 +84,49 @@ export default async function AdminReportsPage() {
   const dayRows = Object.entries(byDay).sort((a, b) => (a[0] < b[0] ? 1 : -1));
 
   return (
-    <AdminShell title="reports">
-      <p className="mb-4 max-w-2xl text-sm text-stone-600">
+    <AdminShell title="Reports">
+      <p className="mb-4 max-w-2xl text-sm text-muted">
         last 30 days, cancelled orders excluded. freebies at 0 price still
         appear in item counts if they were sold as order lines.
       </p>
 
+      <form className="mb-5 flex max-w-md items-end gap-3" method="get">
+        <label className="flex-1 text-sm">
+          cashier
+          <select
+            name="cashier"
+            defaultValue={selectedCashier}
+            className="mt-1 w-full rounded-xl border border-line bg-raised px-3 py-2"
+          >
+            <option value="">all cashiers</option>
+            {(cashiers ?? []).map((cashier) => (
+              <option key={cashier.id} value={cashier.id}>
+                {cashier.name}
+                {cashier.is_active ? "" : " (disabled)"}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button
+          type="submit"
+          className="rounded-xl bg-navy dark:bg-accent-surface dark:text-accent-ink px-4 py-2 text-cream"
+        >
+          filter
+        </button>
+      </form>
+
       {error ? (
-        <p className="text-red-700">{error.message}</p>
+        <p className="text-danger">{error.message}</p>
       ) : (
         <div className="space-y-6">
           <div className="grid gap-4 md:grid-cols-3">
-            <div className="rounded-2xl bg-white p-5 shadow-sm">
-              <p className="text-sm text-stone-500">total sales</p>
+            <div className="rounded-2xl bg-raised p-5 shadow-sm">
+              <p className="text-sm text-muted">Total sales</p>
               <p className="mt-2 text-2xl font-semibold">{formatMoney(total)}</p>
-              <p className="mt-1 text-sm text-stone-500">{list.length} orders</p>
+              <p className="mt-1 text-sm text-muted">{list.length} orders</p>
             </div>
-            <div className="rounded-2xl bg-white p-5 shadow-sm">
-              <p className="text-sm text-stone-500">by payment</p>
+            <div className="rounded-2xl bg-raised p-5 shadow-sm">
+              <p className="text-sm text-muted">By payment</p>
               <ul className="mt-3 space-y-1 text-sm">
                 {Object.entries(byPayment).map(([key, value]) => (
                   <li key={key}>
@@ -90,8 +135,8 @@ export default async function AdminReportsPage() {
                 ))}
               </ul>
             </div>
-            <div className="rounded-2xl bg-white p-5 shadow-sm">
-              <p className="text-sm text-stone-500">by order type</p>
+            <div className="rounded-2xl bg-raised p-5 shadow-sm">
+              <p className="text-sm text-muted">By order type</p>
               <ul className="mt-3 space-y-1 text-sm">
                 {Object.entries(byType).map(([key, value]) => (
                   <li key={key}>
@@ -102,12 +147,12 @@ export default async function AdminReportsPage() {
             </div>
           </div>
 
-          <div className="rounded-2xl bg-white p-5 shadow-sm">
-            <h2 className="text-lg font-medium">top items</h2>
+          <div className="rounded-2xl bg-raised p-5 shadow-sm">
+            <h2 className="text-lg font-medium">Top items</h2>
             {topItems.length === 0 ? (
-              <p className="mt-2 text-sm text-stone-500">no lines yet</p>
+              <p className="mt-2 text-sm text-muted">No lines yet</p>
             ) : (
-              <ul className="mt-3 divide-y divide-stone-100 text-sm">
+              <ul className="mt-3 divide-y divide-line text-sm">
                 {topItems.map((item) => (
                   <li
                     key={item.name}
@@ -123,12 +168,12 @@ export default async function AdminReportsPage() {
             )}
           </div>
 
-          <div className="rounded-2xl bg-white p-5 shadow-sm">
-            <h2 className="text-lg font-medium">sales by day</h2>
+          <div className="rounded-2xl bg-raised p-5 shadow-sm">
+            <h2 className="text-lg font-medium">Sales by day</h2>
             {dayRows.length === 0 ? (
-              <p className="mt-2 text-sm text-stone-500">no days yet</p>
+              <p className="mt-2 text-sm text-muted">No days yet</p>
             ) : (
-              <ul className="mt-3 divide-y divide-stone-100 text-sm">
+              <ul className="mt-3 divide-y divide-line text-sm">
                 {dayRows.map(([day, value]) => (
                   <li key={day} className="flex justify-between py-2">
                     <span>{day}</span>

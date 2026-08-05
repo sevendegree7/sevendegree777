@@ -1,0 +1,321 @@
+import type { Language } from "@/lib/ui/preferences";
+
+// every word the cashier can see, in both languages.
+//
+// arabic is a till feature for now: the kitchen board and admin are english
+// only, so nothing outside /pos and /login needs a key here yet.
+//
+// messages that come back from a server action are not in this file. the
+// server does not know which language the tablet is set to, so those arrive in
+// english and are shown as-is. worth fixing the day the kitchen goes bilingual.
+
+const en = {
+  "brand.tagline": "Cairo's cartographer of taste",
+
+  "login.title": "Sign in",
+  "login.email": "Email",
+  "login.password": "Password",
+  "login.signIn": "Sign in",
+  "login.signingIn": "Signing in...",
+  "login.roleHint":
+    "Admin goes to the dashboard, cashier to POS, kitchen to KDS.",
+  "login.failed": "Login failed",
+  "login.noRole": "No active role found for this account. Ask an admin.",
+  "login.noInternet": "No internet",
+  "login.openAs":
+    "This tablet is open as {name} ({role}). Carry on without signing in again.",
+  "login.continueAs": "Continue as {name}",
+  "login.cashOnlyNote":
+    "Cash only, and every sale is kept on the tablet until the internet is back.",
+  "login.lastChecked": "Shift last checked with the server {time}",
+  "login.needsInternet":
+    "Signing in needs the internet, and this tablet has no shift on it. Connect once and sign in. After that it opens on its own, internet or not.",
+  "login.oneWaiting": "1 sale is still waiting on this tablet.",
+  "login.manyWaiting": "{count} sales are still waiting on this tablet.",
+  "login.uploadsWhenBack": "They upload when the internet is back.",
+  "login.openTillToSend": "Open the till to send them up.",
+  "login.preferences": "Appearance and language",
+
+  "account.signedInAs": "Signed in as",
+  "account.appearance": "Appearance",
+  "account.theme.light": "Light",
+  "account.theme.dark": "Dark",
+  "account.theme.system": "System",
+  "account.language": "Language",
+  "account.signOut": "Sign out",
+  "account.menuLabel": "Account and settings",
+
+  "connection.checking": "Checking connection...",
+  "connection.online": "Online",
+  "connection.offline": "Offline, no internet",
+  "connection.syncing": "Syncing orders...",
+  "connection.checkAgain": "Check again",
+
+  "pos.orders": "Orders",
+  "pos.cashOnly": "Cash only. Every sale is saved on this tablet.",
+  "pos.oneSaleWaiting": "1 sale on this tablet waiting to upload",
+  "pos.salesWaiting": "{count} sales on this tablet waiting to upload",
+  "pos.uploadNow": "Upload now",
+  "pos.uploading": "Uploading...",
+  "pos.uploadProblem": "Upload problem: {message}",
+  "pos.editingTicket":
+    "Editing ticket #{ticket}. It stays live until you confirm, then it is cancelled and its stock goes back.",
+  "pos.leaveItAlone": "Leave it alone",
+  "pos.menuFailed": "Menu did not load",
+  "pos.menuLoading": "Loading the menu...",
+  "pos.tryAgain": "Try again",
+  "pos.allCategories": "All",
+  "pos.noProducts": "Nothing to sell in this category yet.",
+  "pos.options": "options",
+  "pos.unreachable":
+    "Could not reach the server. Press pay again. The same order cannot be charged twice.",
+  "pos.saleReplaced":
+    "Ticket #{replaced} cancelled. New ticket #{ticket} saved. {total}",
+  "pos.saleOnTablet":
+    "Ticket #{ticket} saved on this tablet. {total}. It uploads when the internet is back.",
+  "pos.saleToKitchen": "Ticket #{ticket} sent to kitchen. {total}",
+  "pos.saleCompleted": "Ticket #{ticket} completed. {total}",
+  "pos.editUnavailable":
+    "One of the items on that sale is no longer on the menu, so it cannot be edited. Ring a new sale and void the old ticket.",
+
+  "cart.title": "Cart",
+  "cart.clear": "Clear",
+  "cart.empty": "Tap a product to start an order.",
+  "cart.remove": "Remove",
+  "cart.orderNote": "Order note",
+  "cart.optional": "Optional",
+  "cart.total": "Total",
+  "cart.pay": "Pay",
+  "cart.sending": "Sending...",
+  "cart.paymentNeedsInternet":
+    "{method} needs internet. Take cash, or wait for the connection.",
+
+  "orderType.label": "Order type",
+  "orderType.takeaway": "Takeaway",
+  "orderType.dine_in": "Dine in",
+  "orderType.talabat": "Talabat",
+
+  "payment.label": "Payment",
+  "payment.cash": "Cash",
+  "payment.card": "Card",
+  "payment.instapay": "InstaPay",
+  "payment.needsInternet": "Needs internet",
+
+  "confirm.title": "Confirm payment",
+  "confirm.items": "Items",
+  "confirm.back": "Back",
+  "confirm.confirm": "Confirm",
+
+  "modifier.addToCart": "Add to cart",
+  "modifier.quantity": "Quantity",
+  "modifier.each": "{price} each",
+  "modifier.kitchenNote": "Note for the kitchen",
+  "modifier.free": "Free",
+  "modifier.cancel": "Cancel",
+  "modifier.add": "Add",
+
+  "history.title": "Today's orders",
+  "history.refresh": "Refresh",
+  "history.close": "Close",
+  "history.loading": "Loading...",
+  "history.empty": "No sales yet today.",
+  "history.onThisTablet": "On this tablet",
+  "history.edit": "Edit",
+  "history.cancel": "Cancel",
+  "history.confirmCancel": "Cancel ticket #{ticket}?",
+  "history.cancelled": "Ticket #{ticket} cancelled and stock returned",
+  "history.editNeedsInternet": "An edit needs the internet",
+  "history.notUploaded": "This sale has not been uploaded yet",
+
+  "receipt.ticket": "Ticket",
+  "receipt.order": "Order",
+  "receipt.time": "Time",
+  "receipt.type": "Type",
+  "receipt.payment": "Payment",
+  "receipt.replaces": "Replaces",
+  "receipt.cancelled": "cancelled",
+  "receipt.total": "Total",
+  "receipt.item": "item",
+  "receipt.items": "items",
+  "receipt.thanks": "Thank you",
+  "receipt.print": "Print",
+  "receipt.close": "Close",
+  "receipt.reprint": "Reprint",
+  "receipt.customerCopy": "Customer copy",
+  "receipt.kitchenCopy": "Baker copy",
+
+  "status.pending": "Pending",
+  "status.preparing": "Preparing",
+  "status.ready": "Ready",
+  "status.completed": "Completed",
+  "status.cancelled": "Cancelled",
+} as const;
+
+export type TranslationKey = keyof typeof en;
+
+const ar: Record<TranslationKey, string> = {
+  "brand.tagline": "رسّام خرائط المذاق في القاهرة",
+
+  "login.title": "تسجيل الدخول",
+  "login.email": "البريد الإلكتروني",
+  "login.password": "كلمة المرور",
+  "login.signIn": "تسجيل الدخول",
+  "login.signingIn": "جاري تسجيل الدخول...",
+  "login.roleHint":
+    "المدير إلى لوحة التحكم، الكاشير إلى نقطة البيع، المطبخ إلى شاشة المطبخ.",
+  "login.failed": "فشل تسجيل الدخول",
+  "login.noRole": "لا توجد صلاحية مفعّلة لهذا الحساب. تواصل مع المدير.",
+  "login.noInternet": "لا يوجد إنترنت",
+  "login.openAs":
+    "هذا الجهاز مفتوح باسم {name} ({role}). تابع العمل بدون تسجيل دخول جديد.",
+  "login.continueAs": "تابع باسم {name}",
+  "login.cashOnlyNote":
+    "كاش فقط، وكل عملية بيع محفوظة على الجهاز حتى يعود الإنترنت.",
+  "login.lastChecked": "آخر تأكيد للوردية مع الخادم {time}",
+  "login.needsInternet":
+    "تسجيل الدخول يحتاج إنترنت، ولا توجد وردية محفوظة على هذا الجهاز. اتصل مرة واحدة وسجّل الدخول. بعدها يفتح وحده، بإنترنت أو بدونه.",
+  "login.oneWaiting": "عملية بيع واحدة ما زالت في انتظار الرفع على هذا الجهاز.",
+  "login.manyWaiting":
+    "{count} عمليات بيع ما زالت في انتظار الرفع على هذا الجهاز.",
+  "login.uploadsWhenBack": "سترفع عند عودة الإنترنت.",
+  "login.openTillToSend": "افتح نقطة البيع لرفعها.",
+  "login.preferences": "المظهر واللغة",
+
+  "account.signedInAs": "مسجل الدخول باسم",
+  "account.appearance": "المظهر",
+  "account.theme.light": "فاتح",
+  "account.theme.dark": "داكن",
+  "account.theme.system": "حسب الجهاز",
+  "account.language": "اللغة",
+  "account.signOut": "تسجيل الخروج",
+  "account.menuLabel": "الحساب والإعدادات",
+
+  "connection.checking": "جاري فحص الاتصال...",
+  "connection.online": "متصل",
+  "connection.offline": "غير متصل، لا يوجد إنترنت",
+  "connection.syncing": "جاري رفع الطلبات...",
+  "connection.checkAgain": "افحص مرة أخرى",
+
+  "pos.orders": "الطلبات",
+  "pos.cashOnly": "كاش فقط. كل عملية بيع محفوظة على هذا الجهاز.",
+  "pos.oneSaleWaiting": "عملية بيع واحدة على هذا الجهاز في انتظار الرفع",
+  "pos.salesWaiting": "{count} عمليات بيع على هذا الجهاز في انتظار الرفع",
+  "pos.uploadNow": "ارفع الآن",
+  "pos.uploading": "جاري الرفع...",
+  "pos.uploadProblem": "مشكلة في الرفع: {message}",
+  "pos.editingTicket":
+    "تعديل التذكرة رقم {ticket}. تظل سارية حتى تؤكد، ثم تُلغى ويعود مخزونها.",
+  "pos.leaveItAlone": "اتركها كما هي",
+  "pos.menuFailed": "تعذر تحميل المنيو",
+  "pos.menuLoading": "جاري تحميل المنيو...",
+  "pos.tryAgain": "حاول مرة أخرى",
+  "pos.allCategories": "الكل",
+  "pos.noProducts": "لا توجد أصناف في هذا القسم بعد.",
+  "pos.options": "خيارات",
+  "pos.unreachable":
+    "تعذر الوصول إلى الخادم. اضغط ادفع مرة أخرى. لا يمكن تحصيل نفس الطلب مرتين.",
+  "pos.saleReplaced":
+    "أُلغيت التذكرة رقم {replaced}. حُفظت تذكرة جديدة رقم {ticket}. {total}",
+  "pos.saleOnTablet":
+    "حُفظت التذكرة رقم {ticket} على هذا الجهاز. {total}. سترفع عند عودة الإنترنت.",
+  "pos.saleToKitchen": "أُرسلت التذكرة رقم {ticket} إلى المطبخ. {total}",
+  "pos.saleCompleted": "اكتملت التذكرة رقم {ticket}. {total}",
+  "pos.editUnavailable":
+    "أحد أصناف هذه العملية لم يعد في المنيو، لذلك لا يمكن تعديلها. أنشئ عملية جديدة وألغِ التذكرة القديمة.",
+
+  "cart.title": "السلة",
+  "cart.clear": "تفريغ",
+  "cart.empty": "اضغط على صنف لبدء الطلب.",
+  "cart.remove": "حذف",
+  "cart.orderNote": "ملاحظة الطلب",
+  "cart.optional": "اختياري",
+  "cart.total": "الإجمالي",
+  "cart.pay": "ادفع",
+  "cart.sending": "جاري الإرسال...",
+  "cart.paymentNeedsInternet":
+    "{method} يحتاج إنترنت. خذ كاش أو انتظر عودة الاتصال.",
+
+  "orderType.label": "نوع الطلب",
+  "orderType.takeaway": "تيك أواي",
+  "orderType.dine_in": "في المحل",
+  "orderType.talabat": "طلبات",
+
+  "payment.label": "طريقة الدفع",
+  "payment.cash": "كاش",
+  "payment.card": "بطاقة",
+  "payment.instapay": "انستاباي",
+  "payment.needsInternet": "يحتاج إنترنت",
+
+  "confirm.title": "تأكيد الدفع",
+  "confirm.items": "الأصناف",
+  "confirm.back": "رجوع",
+  "confirm.confirm": "تأكيد",
+
+  "modifier.addToCart": "إضافة إلى السلة",
+  "modifier.quantity": "الكمية",
+  "modifier.each": "{price} للواحدة",
+  "modifier.kitchenNote": "ملاحظة للمطبخ",
+  "modifier.free": "مجاناً",
+  "modifier.cancel": "إلغاء",
+  "modifier.add": "إضافة",
+
+  "history.title": "طلبات اليوم",
+  "history.refresh": "تحديث",
+  "history.close": "إغلاق",
+  "history.loading": "جاري التحميل...",
+  "history.empty": "لا توجد مبيعات اليوم بعد.",
+  "history.onThisTablet": "على هذا الجهاز",
+  "history.edit": "تعديل",
+  "history.cancel": "إلغاء",
+  "history.confirmCancel": "إلغاء التذكرة رقم {ticket}؟",
+  "history.cancelled": "أُلغيت التذكرة رقم {ticket} وعاد المخزون",
+  "history.editNeedsInternet": "التعديل يحتاج إنترنت",
+  "history.notUploaded": "لم تُرفع هذه العملية بعد",
+
+  "receipt.ticket": "التذكرة",
+  "receipt.order": "طلب",
+  "receipt.time": "الوقت",
+  "receipt.type": "النوع",
+  "receipt.payment": "الدفع",
+  "receipt.replaces": "بديلة عن",
+  "receipt.cancelled": "ملغاة",
+  "receipt.total": "الإجمالي",
+  "receipt.item": "صنف",
+  "receipt.items": "أصناف",
+  "receipt.thanks": "شكراً",
+  "receipt.print": "طباعة",
+  "receipt.close": "إغلاق",
+  "receipt.reprint": "إعادة طباعة",
+  "receipt.customerCopy": "نسخة العميل",
+  "receipt.kitchenCopy": "نسخة المطبخ",
+
+  "status.pending": "في الانتظار",
+  "status.preparing": "قيد التحضير",
+  "status.ready": "جاهز",
+  "status.completed": "مكتمل",
+  "status.cancelled": "ملغي",
+};
+
+export const DICTIONARY: Record<Language, Record<TranslationKey, string>> = {
+  en,
+  ar,
+};
+
+// "{count} sales" -> "3 sales". missing values are left as they are rather
+// than printed as "undefined", because a half-rendered sentence on the till is
+// still readable and a crash is not.
+export function translate(
+  language: Language,
+  key: TranslationKey,
+  values?: Record<string, string | number>,
+): string {
+  const template = DICTIONARY[language][key] ?? DICTIONARY.en[key] ?? key;
+
+  if (!values) {
+    return template;
+  }
+
+  return template.replace(/\{(\w+)\}/g, (match, name: string) =>
+    name in values ? String(values[name]) : match,
+  );
+}

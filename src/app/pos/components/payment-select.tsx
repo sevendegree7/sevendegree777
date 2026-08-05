@@ -1,13 +1,10 @@
 "use client";
 
+import { useTranslate } from "@/lib/i18n/use-language";
 import type { PaymentMethod } from "@/types/database.types";
 
-// labels only - the values must stay exactly the payment_method enum
-const PAYMENT_METHODS: { value: PaymentMethod; label: string }[] = [
-  { value: "cash", label: "cash" },
-  { value: "card", label: "card" },
-  { value: "instapay", label: "instapay" },
-];
+// the values must stay exactly the payment_method enum
+const PAYMENT_METHODS: PaymentMethod[] = ["cash", "card", "instapay"];
 
 // cash is the only one the truck can take with the internet down
 const NEEDS_INTERNET: PaymentMethod[] = ["card", "instapay"];
@@ -23,27 +20,29 @@ export function PaymentSelect({
   offline,
   onChange,
 }: PaymentSelectProps) {
+  const { t } = useTranslate();
+
   return (
     <div>
-      <p className="text-sm text-stone-700">payment</p>
+      <p className="text-sm text-muted">{t("payment.label")}</p>
       <div className="mt-2 grid grid-cols-3 gap-2">
         {PAYMENT_METHODS.map((method) => {
-          const blocked = offline && NEEDS_INTERNET.includes(method.value);
+          const blocked = offline && NEEDS_INTERNET.includes(method);
 
           return (
             <button
-              key={method.value}
+              key={method}
               type="button"
-              onClick={() => onChange(method.value)}
+              onClick={() => onChange(method)}
               disabled={blocked}
-              title={blocked ? "needs internet" : undefined}
-              className={`rounded-xl border px-2 py-3 text-sm font-medium disabled:opacity-40 ${
-                value === method.value
-                  ? "border-stone-900 bg-stone-900 text-white"
-                  : "border-stone-300 bg-white text-stone-700"
+              title={blocked ? t("payment.needsInternet") : undefined}
+              className={`rounded-xl border px-2 py-3 text-sm font-medium transition-colors disabled:opacity-40 ${
+                value === method
+                  ? "border-navy bg-navy text-cream dark:border-accent-surface dark:bg-accent-surface dark:text-accent-ink"
+                  : "border-line bg-surface text-muted"
               }`}
             >
-              {method.label}
+              {t(`payment.${method}`)}
             </button>
           );
         })}

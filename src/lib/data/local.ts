@@ -3,9 +3,14 @@
 import type { KitchenOrder } from "@/lib/kds/orders";
 import { cartTotal, lineUnitPrice, type PricedLine } from "@/lib/pos/cart";
 import type { OrderItem, SelectedModifier } from "@/types/database.types";
+import { nextLocalTicketNumber } from "@/lib/pos/ticket-counter";
 
 import { readCachedMenu } from "./menu-cache";
-import { saveLocalOrder } from "./order-store";
+import {
+  findLocalByOrderId,
+  listLocalOrders,
+  saveLocalOrder,
+} from "./order-store";
 import {
   loadFailed,
   loaded,
@@ -38,9 +43,25 @@ export function createLocalSource(): DataSource {
       );
     },
 
-    async loadKitchenOrder() {
-      return loadFailed<KitchenOrder | null>(
-        "no internet. this ticket cannot be re-read right now.",
+    async loadKitchenOrder(orderId) {
+      return loaded(findLocalByOrderId(orderId)?.order ?? null);
+    },
+
+    // the one read this source can honestly answer. the sales taken on this
+    // tablet are right here, so the cashier can still look one up and print it
+    // again with no internet - it just cannot show the ones taken before the
+    // connection dropped, which the panel says out loud.
+    async loadRecentOrders(sinceIso) {
+      const since = Date.parse(sinceIso);
+
+      return loaded(
+        listLocalOrders()
+          .map((local) => local.order)
+          .filter(
+            (order) =>
+              Number.isNaN(since) || Date.parse(order.created_at) >= since,
+          )
+          .reverse(),
       );
     },
 
@@ -139,6 +160,7 @@ export function createLocalSource(): DataSource {
       const total = cartTotal(pricedLines);
       const orderId = crypto.randomUUID();
       const takenAt = new Date().toISOString();
+      const ticket = nextLocalTicketNumber(new Date(takenAt));
 
       const items: OrderItem[] = pricedLines.map((line) => ({
         id: crypto.randomUUID(),
@@ -160,12 +182,14 @@ export function createLocalSource(): DataSource {
         total_amount: total,
         payment_method: input.paymentMethod,
         order_type: input.orderType,
-        status: "pending",
+        status: input.kdsEnabled ? "pending" : "completed",
         notes: input.notes,
         // the server stamps the real user when this is uploaded
         created_by: null,
         // stock is pulled by the server on upload, never here
         stock_deducted: false,
+        ticket_date: ticket.date,
+        ticket_number: ticket.number,
         created_at: takenAt,
         updated_at: takenAt,
         items,
@@ -178,6 +202,8 @@ export function createLocalSource(): DataSource {
           ok: true,
           orderId: saved.order.id,
           total: saved.order.total_amount,
+          ticketDate: saved.order.ticket_date ?? ticket.date,
+          ticketNumber: saved.order.ticket_number ?? ticket.number,
         };
       } catch {
         // out of room, or storage switched off. saying "sold" here would put
@@ -187,6 +213,17 @@ export function createLocalSource(): DataSource {
           message: "could not save the sale on this tablet. do not take payment.",
         };
       }
+    },
+
+    // an edit voids a ticket that lives on the server. there is nothing on
+    // this tablet to void, and a sale rung up as a "replacement" with no void
+    // is just a second sale for the same customer.
+    async replaceOrder() {
+      return {
+        ok: false as const,
+        message:
+          "no internet. cancel the old ticket on the kitchen screen and ring the new one.",
+      };
     },
 
     async moveStatus() {

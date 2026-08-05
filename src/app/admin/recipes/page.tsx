@@ -16,13 +16,13 @@ export default async function AdminRecipesPage() {
     productsResult.error ?? inventoryResult.error ?? recipesResult.error;
 
   return (
-    <AdminShell title="recipes">
-      <p className="mb-4 max-w-2xl text-sm text-stone-600">
+    <AdminShell title="Recipes">
+      <p className="mb-4 max-w-2xl text-sm text-muted">
         bill of materials. when a cashier sells a product, these quantities are
         deducted from inventory automatically.
       </p>
       {loadError ? (
-        <p className="text-red-700">{loadError.message}</p>
+        <p className="text-danger">{loadError.message}</p>
       ) : (
         <RecipesPanel
           products={productsResult.data ?? []}

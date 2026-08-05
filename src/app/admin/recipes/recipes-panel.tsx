@@ -52,14 +52,14 @@ export function RecipesPanel({
 
   return (
     <div className="space-y-6">
-      <div className="max-w-xl rounded-2xl bg-white p-5 shadow-sm">
+      <div className="max-w-xl rounded-2xl bg-raised p-5 shadow-sm">
         <h2 className="font-medium">add or update recipe line</h2>
         <label className="mt-4 block text-sm">
           product
           <select
             value={productId}
             onChange={(e) => setProductId(e.target.value)}
-            className="mt-1 w-full rounded-xl border border-stone-300 px-3 py-2"
+            className="mt-1 w-full rounded-xl border border-line px-3 py-2"
           >
             {products.map((product) => (
               <option key={product.id} value={product.id}>
@@ -73,7 +73,7 @@ export function RecipesPanel({
           <select
             value={itemId}
             onChange={(e) => setItemId(e.target.value)}
-            className="mt-1 w-full rounded-xl border border-stone-300 px-3 py-2"
+            className="mt-1 w-full rounded-xl border border-line px-3 py-2"
           >
             {inventory.map((item) => (
               <option key={item.id} value={item.id}>
@@ -90,26 +90,26 @@ export function RecipesPanel({
             step="0.001"
             value={qty}
             onChange={(e) => setQty(e.target.value)}
-            className="mt-1 w-full rounded-xl border border-stone-300 px-3 py-2"
+            className="mt-1 w-full rounded-xl border border-line px-3 py-2"
           />
         </label>
         <button
           type="button"
           disabled={pending}
           onClick={save}
-          className="mt-4 rounded-xl bg-stone-900 px-4 py-2 text-sm text-white disabled:opacity-60"
+          className="mt-4 rounded-xl bg-navy dark:bg-accent-surface dark:text-accent-ink px-4 py-2 text-sm text-cream disabled:opacity-60"
         >
           {pending ? "saving..." : "save recipe line"}
         </button>
-        {message ? <p className="mt-3 text-sm text-stone-600">{message}</p> : null}
+        {message ? <p className="mt-3 text-sm text-muted">{message}</p> : null}
       </div>
 
-      <div className="rounded-2xl bg-white p-5 shadow-sm">
+      <div className="rounded-2xl bg-raised p-5 shadow-sm">
         <h2 className="font-medium">current recipes</h2>
         {recipes.length === 0 ? (
-          <p className="mt-2 text-sm text-stone-500">no recipes yet</p>
+          <p className="mt-2 text-sm text-muted">no recipes yet</p>
         ) : (
-          <ul className="mt-3 divide-y divide-stone-100 text-sm">
+          <ul className="mt-3 divide-y divide-line text-sm">
             {recipes.map((recipe) => (
               <li
                 key={recipe.id}
@@ -124,7 +124,7 @@ export function RecipesPanel({
                   type="button"
                   disabled={pending}
                   onClick={() => remove(recipe.id)}
-                  className="rounded-lg border border-stone-300 px-3 py-1 text-xs"
+                  className="rounded-lg border border-line px-3 py-1 text-xs"
                 >
                   remove
                 </button>

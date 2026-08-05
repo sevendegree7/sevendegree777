@@ -78,11 +78,11 @@ export async function updateSession(request: NextRequest) {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("role")
+    .select("role, is_active")
     .eq("id", user.id)
     .maybeSingle();
 
-  const roleValue = profile?.role;
+  const roleValue = profile?.is_active ? profile.role : null;
   const role: UserRole | null = roleValue && isUserRole(roleValue) ? roleValue : null;
 
   // already logged in with a role -> leave login page

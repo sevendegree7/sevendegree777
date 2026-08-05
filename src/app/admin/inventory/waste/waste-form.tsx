@@ -44,17 +44,17 @@ export function WasteForm({ items }: WasteFormProps) {
   }
 
   if (items.length === 0) {
-    return <p className="text-stone-600">no inventory items to waste-log.</p>;
+    return <p className="text-muted">no inventory items to waste-log.</p>;
   }
 
   return (
-    <div className="max-w-xl rounded-2xl bg-white p-5 shadow-sm">
+    <div className="max-w-xl rounded-2xl bg-raised p-5 shadow-sm">
       <label className="block text-sm">
         ingredient
         <select
           value={itemId}
           onChange={(e) => setItemId(e.target.value)}
-          className="mt-1 w-full rounded-xl border border-stone-300 px-3 py-2"
+          className="mt-1 w-full rounded-xl border border-line px-3 py-2"
         >
           {items.map((item) => (
             <option key={item.id} value={item.id}>
@@ -72,7 +72,7 @@ export function WasteForm({ items }: WasteFormProps) {
           step="0.001"
           value={quantity}
           onChange={(e) => setQuantity(e.target.value)}
-          className="mt-1 w-full rounded-xl border border-stone-300 px-3 py-2"
+          className="mt-1 w-full rounded-xl border border-line px-3 py-2"
         />
       </label>
 
@@ -81,7 +81,7 @@ export function WasteForm({ items }: WasteFormProps) {
         <select
           value={reason}
           onChange={(e) => setReason(e.target.value as WasteReason)}
-          className="mt-1 w-full rounded-xl border border-stone-300 px-3 py-2"
+          className="mt-1 w-full rounded-xl border border-line px-3 py-2"
         >
           {REASONS.map((value) => (
             <option key={value} value={value}>
@@ -97,7 +97,7 @@ export function WasteForm({ items }: WasteFormProps) {
           type="text"
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
-          className="mt-1 w-full rounded-xl border border-stone-300 px-3 py-2"
+          className="mt-1 w-full rounded-xl border border-line px-3 py-2"
           placeholder="optional"
         />
       </label>
@@ -106,12 +106,12 @@ export function WasteForm({ items }: WasteFormProps) {
         type="button"
         disabled={pending}
         onClick={submit}
-        className="mt-5 rounded-xl bg-stone-900 px-4 py-3 text-sm text-white disabled:opacity-60"
+        className="mt-5 rounded-xl bg-navy dark:bg-accent-surface dark:text-accent-ink px-4 py-3 text-sm text-cream disabled:opacity-60"
       >
         {pending ? "saving..." : "log waste"}
       </button>
 
-      {message ? <p className="mt-3 text-sm text-stone-600">{message}</p> : null}
+      {message ? <p className="mt-3 text-sm text-muted">{message}</p> : null}
     </div>
   );
 }

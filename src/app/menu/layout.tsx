@@ -1,30 +1,16 @@
 import type { Metadata } from "next";
-import { Fraunces, DM_Sans } from "next/font/google";
 import type { ReactNode } from "react";
 
 import "./menu.css";
 
-const display = Fraunces({
-  subsets: ["latin"],
-  variable: "--font-menu-display",
-});
-
-const body = DM_Sans({
-  subsets: ["latin"],
-  variable: "--font-menu-body",
-});
+// the brand faces are already loaded by the root layout, so this page adds no
+// fonts of its own - a guest on truck wifi should not download a second set
 
 export const metadata: Metadata = {
-  title: "seven degree · menu",
-  description: "live menu — what's available right now on the truck",
+  title: "Seven Degrees · Menu",
+  description: "Cairo's cartographer of taste. What is on the counter today.",
 };
 
 export default function MenuLayout({ children }: { children: ReactNode }) {
-  return (
-    <div
-      className={`${display.variable} ${body.variable} menu-root min-h-screen`}
-    >
-      {children}
-    </div>
-  );
+  return <div className="menu-root min-h-screen">{children}</div>;
 }

@@ -1,12 +1,18 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import { useState, type FormEvent } from "react";
 
+import { BrandMark } from "@/components/brand-mark";
+import { PreferencesMenu } from "@/components/preferences-menu";
 import { ROLE_HOME, ROLE_OFFLINE_HOME, isUserRole } from "@/lib/auth/roles";
-import { saveShift, useShift } from "@/lib/auth/shift";
-import { checkConnection, useConnection } from "@/lib/connection/use-connection";
+import { clearShift, saveShift, useShift } from "@/lib/auth/shift";
+import {
+  checkConnection,
+  useConnection,
+} from "@/lib/connection/use-connection";
 import { useUnsyncedSales } from "@/lib/data/use-unsynced-sales";
+import { useTranslate } from "@/lib/i18n/use-language";
 import { createClient } from "@/lib/supabase/client";
 
 export default function LoginPage() {
@@ -14,6 +20,7 @@ export default function LoginPage() {
   const connection = useConnection();
   const shift = useShift();
   const waitingSales = useUnsyncedSales();
+  const { t } = useTranslate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -38,19 +45,25 @@ export default function LoginPage() {
       });
 
     if (authError || !authData.user) {
-      setError(authError?.message ?? "login failed");
+      setError(authError?.message ?? t("login.failed"));
       setLoading(false);
       return;
     }
 
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
-      .select("name, role")
+      .select("name, role, is_active")
       .eq("id", authData.user.id)
       .maybeSingle();
 
-    if (profileError || !profile || !isUserRole(profile.role)) {
-      setError("no role found for this account. ask admin to set your profile.");
+    if (
+      profileError ||
+      !profile ||
+      !profile.is_active ||
+      !isUserRole(profile.role)
+    ) {
+      clearShift();
+      setError(t("login.noRole"));
       setLoading(false);
       return;
     }
@@ -80,97 +93,117 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-stone-100 px-4">
-      <div className="w-full max-w-md rounded-2xl bg-white p-8 shadow-sm">
-        <p className="text-sm tracking-wide text-stone-500">seven degree</p>
+    <main className="relative flex min-h-screen items-center justify-center bg-surface px-4 py-10">
+      {/* the engraved hatch from the pattern library, kept faint enough to
+          read as texture rather than stripes */}
+      <div
+        aria-hidden
+        className="brand-hatch pointer-events-none absolute inset-0 opacity-40"
+      />
+
+      <div className="absolute end-4 top-4 z-10">
+        <PreferencesMenu />
+      </div>
+
+      <div className="relative w-full max-w-md rounded-2xl border border-line bg-raised p-8 shadow-sm">
+        <div className="text-center">
+          <BrandMark className="text-6xl" />
+          <p className="mt-3 font-mono text-[0.65rem] uppercase tracking-[0.22em] text-muted">
+            Seven Degrees
+          </p>
+          <p className="font-accent mt-1 text-base text-accent">
+            {t("brand.tagline")}
+          </p>
+        </div>
+
+        <div className="my-6 h-px bg-line" />
 
         {offline ? (
           <>
-            <h1 className="mt-2 text-3xl font-semibold text-stone-900">
-              no internet
+            <h1 className="font-display text-3xl font-semibold">
+              {t("login.noInternet")}
             </h1>
 
             {shift ? (
               <>
-                <p className="mt-2 text-sm text-stone-600">
-                  this tablet is open as {shift.name} · {shift.role}. carry on
-                  without signing in again.
+                <p className="mt-2 text-sm text-muted">
+                  {t("login.openAs", { name: shift.name, role: shift.role })}
                 </p>
 
                 <button
                   type="button"
                   onClick={continueOffline}
-                  className="mt-8 w-full rounded-xl bg-stone-900 px-4 py-3 text-base font-medium text-white"
+                  className="mt-8 w-full rounded-xl bg-navy px-4 py-3 text-base font-semibold text-cream dark:bg-accent-surface dark:text-accent-ink"
                 >
-                  continue as {shift.name}
+                  {t("login.continueAs", { name: shift.name })}
                 </button>
 
-                <p className="mt-4 text-sm text-stone-600">
-                  cash only, and every sale is kept on the tablet until the
-                  internet is back.
+                <p className="mt-4 text-sm text-muted">
+                  {t("login.cashOnlyNote")}
                 </p>
-                <p className="mt-2 text-xs text-stone-500">
-                  shift last checked with the server{" "}
-                  {new Date(shift.savedAt).toLocaleString()}
+                <p className="mt-2 text-xs text-muted">
+                  {t("login.lastChecked", {
+                    time: new Date(shift.savedAt).toLocaleString(),
+                  })}
                 </p>
               </>
             ) : (
-              <p className="mt-2 text-sm text-stone-600">
-                signing in needs the internet, and this tablet has no shift on
-                it. connect once and sign in - after that it opens on its own,
-                internet or not.
+              <p className="mt-2 text-sm text-muted">
+                {t("login.needsInternet")}
               </p>
             )}
 
             <button
               type="button"
               onClick={() => void checkConnection()}
-              className="mt-6 w-full rounded-xl border border-stone-300 px-4 py-3 text-base"
+              className="mt-6 w-full rounded-xl border border-line px-4 py-3 text-base"
             >
-              check again
+              {t("connection.checkAgain")}
             </button>
           </>
         ) : (
           <form onSubmit={onSubmit}>
-            <h1 className="mt-2 text-3xl font-semibold text-stone-900">
-              sign in
+            <h1 className="font-display text-3xl font-semibold">
+              {t("login.title")}
             </h1>
-            <p className="mt-2 text-sm text-stone-600">
-              admin goes to dashboard, cashier to pos, kitchen to kds
-            </p>
+            <p className="mt-2 text-sm text-muted">{t("login.roleHint")}</p>
 
-            <label className="mt-8 block text-sm text-stone-700">
-              email
+            <label className="mt-8 block text-sm text-muted">
+              {t("login.email")}
               <input
                 type="email"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="mt-2 w-full rounded-xl border border-stone-300 px-4 py-3 text-base outline-none focus:border-stone-800"
+                dir="ltr"
+                className="mt-2 w-full rounded-xl border border-line bg-surface px-4 py-3 text-base text-ink outline-none focus:border-accent"
                 autoComplete="email"
               />
             </label>
 
-            <label className="mt-4 block text-sm text-stone-700">
-              password
+            <label className="mt-4 block text-sm text-muted">
+              {t("login.password")}
               <input
                 type="password"
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="mt-2 w-full rounded-xl border border-stone-300 px-4 py-3 text-base outline-none focus:border-stone-800"
+                dir="ltr"
+                className="mt-2 w-full rounded-xl border border-line bg-surface px-4 py-3 text-base text-ink outline-none focus:border-accent"
                 autoComplete="current-password"
               />
             </label>
 
-            {error ? <p className="mt-4 text-sm text-red-600">{error}</p> : null}
+            {error ? (
+              <p className="mt-4 text-sm text-danger">{error}</p>
+            ) : null}
 
             <button
               type="submit"
               disabled={loading}
-              className="mt-6 w-full rounded-xl bg-stone-900 px-4 py-3 text-base font-medium text-white disabled:opacity-60"
+              className="mt-6 w-full rounded-xl bg-navy px-4 py-3 text-base font-semibold text-cream disabled:opacity-60 dark:bg-accent-surface dark:text-accent-ink"
             >
-              {loading ? "signing in..." : "sign in"}
+              {loading ? t("login.signingIn") : t("login.signIn")}
             </button>
           </form>
         )}
@@ -178,12 +211,13 @@ export default function LoginPage() {
         {/* money the shop has taken that the books have not seen yet. whoever
             is standing at this screen is the person who can get it up. */}
         {waitingSales > 0 ? (
-          <p className="mt-6 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900">
-            {waitingSales} {waitingSales === 1 ? "sale is" : "sales are"} still
-            waiting on this tablet.{" "}
+          <p className="mt-6 rounded-xl bg-warn/15 px-4 py-3 text-sm text-warn">
+            {waitingSales === 1
+              ? t("login.oneWaiting")
+              : t("login.manyWaiting", { count: waitingSales })}{" "}
             {offline
-              ? "they upload when the internet is back."
-              : "open the till to send them up."}
+              ? t("login.uploadsWhenBack")
+              : t("login.openTillToSend")}
           </p>
         ) : null}
       </div>

@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
 
+import { BrandMark } from "@/components/brand-mark";
 import {
   ROLE_OFFLINE_HOME,
   canAccessRoute,
@@ -116,23 +117,26 @@ export function ShiftKeeper() {
   // sending them to /login, because that page needs a copy on the tablet and
   // this is exactly the state where there might not be one.
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-stone-100 px-6">
-      <div className="w-full max-w-md rounded-2xl bg-white p-8 text-center shadow-sm">
-        <p className="text-sm tracking-wide text-stone-500">seven degree</p>
-        <h1 className="mt-2 text-3xl font-semibold text-stone-900">
-          no shift on this tablet
+    <div className="fixed inset-0 z-50 grid place-items-center bg-surface px-6">
+      <div className="w-full max-w-md rounded-2xl border border-line bg-raised p-8 text-center shadow-sm">
+        <BrandMark className="text-5xl" />
+        <p className="mt-2 font-mono text-[0.65rem] uppercase tracking-[0.2em] text-muted">
+          Seven Degrees
+        </p>
+        <h1 className="font-display mt-3 text-3xl font-semibold text-ink">
+          No shift on this tablet
         </h1>
-        <p className="mt-3 text-sm text-stone-600">
-          nobody is signed in here, and signing in needs the internet. connect
-          once and sign in - after that this screen opens on its own, internet
-          or not.
+        <p className="mt-3 text-sm text-muted">
+          Nobody is signed in here, and signing in needs the internet. Connect
+          once and sign in. After that this screen opens on its own, internet or
+          not.
         </p>
         <button
           type="button"
           onClick={() => void checkConnection()}
-          className="mt-6 w-full rounded-xl border border-stone-300 px-4 py-3 text-base"
+          className="mt-6 w-full rounded-xl border border-line px-4 py-3 text-base"
         >
-          check again
+          Check again
         </button>
       </div>
     </div>

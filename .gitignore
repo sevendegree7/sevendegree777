@@ -24,6 +24,9 @@
 .DS_Store
 *.pem
 
+# rendered pages from the brand deck, used for design reference only
+/.brand-preview
+
 # debug
 npm-debug.log*
 yarn-debug.log*

@@ -17,13 +17,13 @@ export default async function AdminMenuPage() {
   }
 
   return (
-    <AdminShell title="menu">
-      <p className="mb-4 max-w-2xl text-sm text-stone-600">
+    <AdminShell title="Menu">
+      <p className="mb-4 max-w-2xl text-sm text-muted">
         change prices and turn items on/off. unavailable products disappear from
         the pos grid on the next load.
       </p>
       {productsResult.error ? (
-        <p className="text-red-700">{productsResult.error.message}</p>
+        <p className="text-danger">{productsResult.error.message}</p>
       ) : (
         <MenuEditor
           products={productsResult.data ?? []}

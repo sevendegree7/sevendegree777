@@ -12,21 +12,21 @@ type StatusColumnProps = {
 
 // heading + colour per lane so the kitchen reads the board at a glance
 const COLUMN_LABEL: Record<KitchenStatus, string> = {
-  pending: "new",
-  preparing: "preparing",
-  ready: "ready",
+  pending: "New",
+  preparing: "Preparing",
+  ready: "Ready",
 };
 
 const COLUMN_ACCENT: Record<KitchenStatus, string> = {
-  pending: "bg-amber-100 text-amber-900",
-  preparing: "bg-blue-100 text-blue-900",
-  ready: "bg-green-100 text-green-900",
+  pending: "bg-warn/15 text-warn",
+  preparing: "bg-info/15 text-info",
+  ready: "bg-ok/15 text-ok",
 };
 
 const EMPTY_TEXT: Record<KitchenStatus, string> = {
-  pending: "no new orders.",
-  preparing: "nothing on the pass.",
-  ready: "nothing waiting for pickup.",
+  pending: "No new orders.",
+  preparing: "Nothing on the pass.",
+  ready: "Nothing waiting for pickup.",
 };
 
 // one lane of the kitchen board
@@ -41,7 +41,7 @@ export function StatusColumn({ status, count, children }: StatusColumnProps) {
       </div>
 
       {count === 0 ? (
-        <p className="rounded-2xl bg-white p-5 text-sm text-stone-500 shadow-sm">
+        <p className="rounded-2xl bg-raised p-5 text-sm text-muted shadow-sm">
           {EMPTY_TEXT[status]}
         </p>
       ) : (

@@ -33,6 +33,7 @@ export type Profile = {
   id: string;
   name: string;
   role: UserRole;
+  is_active: boolean;
   created_at: string;
 };
 
@@ -42,6 +43,9 @@ export type Category = {
   icon: string | null;
   color: string | null;
   sort_order: number;
+  // a retired category keeps its row so old products still resolve, but stops
+  // appearing on the till, the qr menu and the admin picker
+  is_active: boolean;
   created_at: string;
 };
 
@@ -52,6 +56,9 @@ export type Product = {
   base_price: number;
   is_available: boolean;
   sort_order: number;
+  // the cuisine colour, kept on the product now that the seven cuisines are no
+  // longer categories in their own right
+  color: string | null;
   created_at: string;
 };
 
@@ -82,7 +89,27 @@ export type Order = {
   created_by: string | null;
   // true after bom deduct ran for this order
   stock_deducted: boolean;
+  // visible number resets every Egypt business day
+  ticket_date?: string;
+  ticket_number?: number;
   created_at: string;
+  updated_at: string;
+};
+
+export type InventoryMode = "finished_goods" | "ingredients";
+
+export type AppSettings = {
+  id: string;
+  kds_enabled: boolean;
+  inventory_mode: InventoryMode;
+  receipt_copies: number;
+  updated_at: string;
+};
+
+export type ProductStock = {
+  product_id: string;
+  current_stock: number;
+  min_threshold: number;
   updated_at: string;
 };
 
@@ -142,12 +169,14 @@ export type Database = {
           id: string;
           name: string;
           role?: UserRole;
+          is_active?: boolean;
           created_at?: string;
         };
         Update: {
           id?: string;
           name?: string;
           role?: UserRole;
+          is_active?: boolean;
           created_at?: string;
         };
         Relationships: [];
@@ -160,6 +189,7 @@ export type Database = {
           icon?: string | null;
           color?: string | null;
           sort_order?: number;
+          is_active?: boolean;
           created_at?: string;
         };
         Update: {
@@ -168,6 +198,7 @@ export type Database = {
           icon?: string | null;
           color?: string | null;
           sort_order?: number;
+          is_active?: boolean;
           created_at?: string;
         };
         Relationships: [];
@@ -181,6 +212,7 @@ export type Database = {
           base_price: number;
           is_available?: boolean;
           sort_order?: number;
+          color?: string | null;
           created_at?: string;
         };
         Update: {
@@ -190,6 +222,7 @@ export type Database = {
           base_price?: number;
           is_available?: boolean;
           sort_order?: number;
+          color?: string | null;
           created_at?: string;
         };
         Relationships: [];
@@ -224,6 +257,8 @@ export type Database = {
           notes?: string | null;
           created_by?: string | null;
           stock_deducted?: boolean;
+          ticket_date?: string;
+          ticket_number?: number;
           created_at?: string;
           updated_at?: string;
         };
@@ -237,6 +272,8 @@ export type Database = {
           notes?: string | null;
           created_by?: string | null;
           stock_deducted?: boolean;
+          ticket_date?: string;
+          ticket_number?: number;
           created_at?: string;
           updated_at?: string;
         };
@@ -346,11 +383,118 @@ export type Database = {
         };
         Relationships: [];
       };
+      app_settings: {
+        Row: AppSettings;
+        Insert: {
+          id: string;
+          kds_enabled?: boolean;
+          inventory_mode?: InventoryMode;
+          receipt_copies?: number;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          kds_enabled?: boolean;
+          inventory_mode?: InventoryMode;
+          receipt_copies?: number;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      product_stock: {
+        Row: ProductStock;
+        Insert: {
+          product_id: string;
+          current_stock?: number;
+          min_threshold?: number;
+          updated_at?: string;
+        };
+        Update: {
+          product_id?: string;
+          current_stock?: number;
+          min_threshold?: number;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      daily_ticket_counters: {
+        Row: {
+          business_date: string;
+          next_number: number;
+        };
+        Insert: {
+          business_date: string;
+          next_number: number;
+        };
+        Update: {
+          business_date?: string;
+          next_number?: number;
+        };
+        Relationships: [];
+      };
+      product_waste_logs: {
+        Row: {
+          id: string;
+          product_id: string;
+          quantity: number;
+          reason: WasteReason;
+          notes: string | null;
+          logged_by: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          product_id: string;
+          quantity: number;
+          reason: WasteReason;
+          notes?: string | null;
+          logged_by?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          product_id?: string;
+          quantity?: number;
+          reason?: WasteReason;
+          notes?: string | null;
+          logged_by?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
     Functions: {
       deduct_stock_for_order: {
         Args: { p_order_id: string };
+        Returns: Json;
+      };
+      return_stock_for_order: {
+        Args: { p_order_id: string };
+        Returns: Json;
+      };
+      allocate_ticket_number: {
+        Args: {
+          p_ticket_date?: string;
+          p_requested_number?: number | null;
+        };
+        Returns: number;
+      };
+      receive_product_stock: {
+        Args: { p_product_id: string; p_add_quantity: number };
+        Returns: Json;
+      };
+      set_product_stock_threshold: {
+        Args: { p_product_id: string; p_min_threshold: number };
+        Returns: Json;
+      };
+      log_product_waste_and_deduct: {
+        Args: {
+          p_product_id: string;
+          p_quantity: number;
+          p_reason: WasteReason;
+          p_notes?: string | null;
+        };
         Returns: Json;
       };
       restock_inventory_item: {
