@@ -1,6 +1,7 @@
 "use server";
 
 import { cartTotal, lineUnitPrice, type PricedLine } from "@/lib/pos/cart";
+import { isValidOrderId } from "@/lib/pos/order-id";
 import { createClient } from "@/lib/supabase/server";
 import type {
   OrderType,
@@ -40,13 +41,6 @@ export type CheckoutResult =
 // postgres unique_violation
 const UNIQUE_VIOLATION = "23505";
 
-// this is the one value the browser is trusted to choose, and only because it
-// is meaningless on its own: an id nobody can guess and nobody is charged by.
-// it still has to look like a uuid before it goes near the insert, so a
-// malformed one is refused here rather than by postgres.
-const UUID =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 // writes one order plus its lines. status starts at pending so kds picks it up.
 export async function createOrder(
   input: CheckoutInput,
@@ -61,7 +55,7 @@ export async function createOrder(
     }
   }
 
-  if (input.orderId !== undefined && !UUID.test(input.orderId)) {
+  if (input.orderId !== undefined && !isValidOrderId(input.orderId)) {
     return { ok: false, message: "this sale has an invalid id" };
   }
 

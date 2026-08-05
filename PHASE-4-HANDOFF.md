@@ -5,7 +5,7 @@
 >
 > - **§0–§9 are the original plan**, and parts of it never happened — it says
 >   "lan sync" throughout, and there is no lan (§13)
-> - **§11–§20 are what was actually built**, one section per merged pr
+> - **§11–§21 are what was actually built**, one section per merged pr
 >
 > **if you are picking this project up, read §20 first**, then §13. between
 > them they cover what runs today, how to build and test it, and what is left.
@@ -826,8 +826,10 @@ the board silently renumbers the ticket everyone is already working from.
 that means the browser picks a primary key, which deserves the suspicion it
 usually gets. why it is safe here:
 
-- it is **validated against a uuid pattern** in the server action before it goes
-  near the insert
+- it is **validated against a uuid pattern** (`isValidOrderId`,
+  `src/lib/pos/order-id.ts`) before it goes near the insert. that guard lives
+  outside the server action on purpose: a `"use server"` file can only export
+  async functions, so a check left inline there could never be unit tested
 - it is an `insert`, so a chosen id can only ever *fail* on a collision, never
   overwrite an existing order
 - it decides nothing. every price is still re-read from the db, the role is
@@ -1066,8 +1068,77 @@ in the order i would do it:
    verified in a desktop browser against a production build
 4. thermal printing (esc/pos), and the reprint stub from §3
 5. touch qa on the real device: button sizes on the till and the board
-6. there are **no automated tests** in this repo. everything so far was checked
-   by running it. if you add a test setup, start with `src/lib/pos/money.ts` and
-   `src/lib/pos/cart.ts` — pure functions, and they decide what customers pay.
-   for sql, `@electric-sql/pglite` runs a real postgres with no docker and no
-   project credentials — see §12 for how the stock-return function was checked
+6. ~~there are **no automated tests** in this repo.~~ there are now — `npm test`,
+   46 of them over the money math, the cart, the board merge and the order-id
+   guard (§21). they cover the pure logic only. everything with a component or
+   a supabase call is still checked by running it
+
+---
+
+## 21) tests (built — step 9)
+
+`npm test` — vitest, 46 tests, about a fifth of a second. no watch mode in the
+script; run `npx vitest` if you want one.
+
+there were none before this. everything in phases 1–4 was checked by running
+it, which is the right way to check a kitchen board and the wrong way to check
+arithmetic.
+
+### what is covered, and why those
+
+only **pure functions**. nothing here renders a component, and nothing here
+touches supabase — no mocks, no fixtures database, no setup file.
+
+| file | why it earns a test |
+| --- | --- |
+| `src/lib/pos/money.ts` | every price on every receipt goes through it |
+| `src/lib/pos/cart.ts` | decides what the customer is charged, and holds the double-charge guard |
+| `src/lib/kds/orders.ts` | the merge between the cloud board and the tablet's own sales |
+| `src/lib/pos/order-id.ts` | the one value the browser is allowed to choose |
+
+the money tests are written as receipts that would have been wrong: `10.10 +
+20.20` is `30.299999999999997` in plain javascript, and `8.10 × 3` is
+`24.299999999999997`. those two numbers are the whole reason the piastres
+module exists, so they are in there by name.
+
+`saleSignature` is tested for its **properties** rather than its output, because
+the string itself is not the contract: the same sale must produce the same id so
+a retry after a network wobble reuses one `client_id`, and any edit to what is
+being sold must produce a different one. one test documents behaviour rather
+than endorsing it — the signature is sensitive to the **order of the lines**,
+which is unreachable today because the cart never reorders itself, and would be
+a double-charge if it ever did.
+
+`mergeBoard` is tested hardest, because §18 leans on it: it dedupes local
+against cloud on **`client_id`**, not `id`, which is the only reason
+`createOrder` can safely accept the tablet's own id. there is a test for exactly
+that case — cloud and local sharing an id, still collapsing to one card.
+
+### the suite was checked against itself
+
+a suite that passes on correct code proves nothing on its own, so four
+regressions were introduced on purpose and reverted:
+
+| break | caught |
+| --- | --- |
+| `money.ts` stops rounding to whole piastres | ✅ 1 failed |
+| `mergeBoard` dedupes on `id` instead of `client_id` | ✅ 2 failed |
+| `cancelled` removed from `pending` in `ALLOWED_MOVES` | ✅ 1 failed |
+| `isValidOrderId` always returns true | ✅ 2 failed |
+
+the fourth one is why `order-id.ts` exists as its own module. the guard started
+inline in the server action, and `tsc` and `eslint` both stayed silent when it
+was deleted — a `"use server"` file can only export async functions, so it could
+not be reached from a test where it was.
+
+### what is deliberately not covered
+
+- anything that renders. that needs jsdom and a component setup, and the screens
+  have been exercised by hand every step of phase 4
+- the server actions and the data sources — they need supabase, and mocking it
+  would mostly test the mock
+- `sync.ts`. it is worth covering and it is the obvious next one, but it wants a
+  fake `localStorage` plus a fake cloud source, which is a real test harness
+  rather than an afternoon
+- the sql. that has its own answer in §12: `@electric-sql/pglite` runs a real
+  postgres with no docker and no project credentials
