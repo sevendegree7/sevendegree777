@@ -6,6 +6,7 @@ import { ConnectionBanner } from "@/components/connection-banner";
 import { OfflineSync } from "@/components/offline-sync";
 import { checkConnection, useConnection } from "@/lib/connection/use-connection";
 import { getDataSource, type MenuSnapshot } from "@/lib/data";
+import { ticketNumber, type KitchenOrder } from "@/lib/kds/orders";
 import { writeCachedMenu } from "@/lib/data/menu-cache";
 import { syncPendingOrders } from "@/lib/data/sync";
 import {
@@ -18,7 +19,9 @@ import {
   saleSignature,
   type CartLine,
 } from "@/lib/pos/cart";
+import { cartLinesFromOrder } from "@/lib/pos/edit-order";
 import { formatMoney } from "@/lib/pos/money";
+import { buildReceipt, type Receipt } from "@/lib/pos/receipt";
 import type {
   Modifier,
   OrderType,
@@ -34,6 +37,7 @@ import { ConfirmDialog } from "./components/confirm-dialog";
 import { ModifierModal } from "./components/modifier-modal";
 import { OrderHistory } from "./components/order-history";
 import { ProductGrid } from "./components/product-grid";
+import { ReceiptView } from "./components/receipt-view";
 
 type PosScreenProps = {
   // read on the server for a fast first paint. null means that read failed,
@@ -60,6 +64,15 @@ export function PosScreen({ initialMenu }: PosScreenProps) {
   const [orderNotes, setOrderNotes] = useState("");
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  // the sale being corrected. the old ticket is not touched until the new one
+  // is confirmed - backing out of an edit costs the customer nothing.
+  const [editing, setEditing] = useState<{
+    orderId: string;
+    ticket: string;
+  } | null>(null);
+  // the ticket to print. shown after an edit, where the customer is holding a
+  // piece of paper that has just stopped being valid.
+  const [receipt, setReceipt] = useState<Receipt | null>(null);
   // new seed after every sale that lands, so two identical carts in a row are
   // two orders. it survives a failed attempt, which is what makes a retry safe.
   const [saleSeed, setSaleSeed] = useState(() => crypto.randomUUID());
@@ -251,6 +264,40 @@ export function PosScreen({ initialMenu }: PosScreenProps) {
     );
   }
 
+  // hands a sale that was already rung up back to the cashier as a cart.
+  // nothing has happened to the old ticket at this point - it is still live on
+  // the kitchen screen, and stays live if the cashier backs out.
+  function startEdit(order: KitchenOrder) {
+    const lines = cartLinesFromOrder(order);
+
+    if (!lines) {
+      setHistoryOpen(false);
+      setFeedback({
+        kind: "error",
+        text: "one of the items on that sale is no longer on the menu, so it cannot be edited. ring a new sale and void the old ticket.",
+      });
+      return;
+    }
+
+    setCart(lines);
+    setOrderType(order.order_type);
+    setPaymentMethod(order.payment_method ?? "cash");
+    setOrderNotes(order.notes ?? "");
+    setEditing({ orderId: order.id, ticket: ticketNumber(order.id) });
+    // a fresh seed: this is a different sale from the one being replaced, and
+    // must not share a checkout id with it
+    setSaleSeed(crypto.randomUUID());
+    setHistoryOpen(false);
+    setFeedback(null);
+  }
+
+  function cancelEdit() {
+    setEditing(null);
+    setCart([]);
+    setOrderNotes("");
+    setFeedback(null);
+  }
+
   function openConfirm() {
     if (cart.length === 0 || paymentBlocked) {
       return;
@@ -273,14 +320,24 @@ export function PosScreen({ initialMenu }: PosScreenProps) {
       // in flight, and the message has to describe where it actually went.
       const source = getDataSource();
 
+      const checkout = {
+        clientId: checkoutId,
+        orderType,
+        paymentMethod,
+        notes: orderNotes.trim() ? orderNotes.trim() : null,
+        lines,
+      };
+
       try {
-        const result = await source.submitOrder({
-          clientId: checkoutId,
-          orderType,
-          paymentMethod,
-          notes: orderNotes.trim() ? orderNotes.trim() : null,
-          lines,
-        });
+        // an edit is one call, not two: the server puts the new sale in and
+        // voids the old ticket, so the browser cannot end up having done half
+        // of it and then lost the connection.
+        const result = editing
+          ? await source.replaceOrder({
+              ...checkout,
+              replacesOrderId: editing.orderId,
+            })
+          : await source.submitOrder(checkout);
 
         if (!result.ok) {
           setConfirmOpen(false);
@@ -288,17 +345,44 @@ export function PosScreen({ initialMenu }: PosScreenProps) {
           return;
         }
 
+        // only an edit answers with these two
+        const replaced =
+          "replaced" in result && typeof result.replaced === "string"
+            ? result.replaced
+            : null;
+        const warning =
+          "warning" in result && typeof result.warning === "string"
+            ? result.warning
+            : null;
+
         setCart([]);
         setOrderNotes("");
         setConfirmOpen(false);
+        setEditing(null);
         setSaleSeed(crypto.randomUUID());
-        setFeedback({
-          kind: "success",
-          text:
-            source.kind === "local"
-              ? `order ${result.orderId.slice(0, 8)} saved on this tablet · ${formatMoney(result.total)} · it uploads when the internet is back`
-              : `order ${result.orderId.slice(0, 8)} sent to kitchen · ${formatMoney(result.total)}`,
-        });
+        setFeedback(
+          warning
+            ? { kind: "error", text: warning }
+            : {
+                kind: "success",
+                text: replaced
+                  ? `ticket #${replaced} cancelled · new order ${result.orderId.slice(0, 8)} sent to kitchen · ${formatMoney(result.total)}`
+                  : source.kind === "local"
+                    ? `order ${result.orderId.slice(0, 8)} saved on this tablet · ${formatMoney(result.total)} · it uploads when the internet is back`
+                    : `order ${result.orderId.slice(0, 8)} sent to kitchen · ${formatMoney(result.total)}`,
+              },
+        );
+
+        // the corrected sale gets a fresh receipt, read back from the server so
+        // the paper shows the prices that were actually charged rather than the
+        // ones the browser was holding.
+        if (replaced) {
+          const reread = await source.loadKitchenOrder(result.orderId);
+
+          if (reread.data) {
+            setReceipt(buildReceipt(reread.data, { replaces: replaced }));
+          }
+        }
       } catch {
         // the request never came back, so we do not know if the order landed.
         // the cart is kept exactly as it is: pressing pay again sends the same
@@ -359,6 +443,25 @@ export function PosScreen({ initialMenu }: PosScreenProps) {
             </span>
           ) : null}
         </div>
+
+        {editing ? (
+          // the cart looks exactly like a normal sale, so the one thing that
+          // makes this different has to be impossible to miss
+          <div className="flex flex-wrap items-center gap-3 rounded-xl bg-blue-100 px-4 py-3 text-sm text-blue-900">
+            <span>
+              editing ticket <span className="font-mono">#{editing.ticket}</span>
+              . it stays live until you confirm, then it is cancelled and its
+              ingredients go back.
+            </span>
+            <button
+              type="button"
+              onClick={cancelEdit}
+              className="rounded-full border border-blue-300 px-3 py-1"
+            >
+              leave it alone
+            </button>
+          </div>
+        ) : null}
 
         {feedback ? (
           <p
@@ -447,7 +550,15 @@ export function PosScreen({ initialMenu }: PosScreenProps) {
       ) : null}
 
       {historyOpen ? (
-        <OrderHistory onClose={() => setHistoryOpen(false)} />
+        <OrderHistory
+          onClose={() => setHistoryOpen(false)}
+          onEdit={startEdit}
+          offline={offline}
+        />
+      ) : null}
+
+      {receipt ? (
+        <ReceiptView receipt={receipt} onClose={() => setReceipt(null)} />
       ) : null}
 
       {confirmOpen ? (

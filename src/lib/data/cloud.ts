@@ -1,7 +1,7 @@
 "use client";
 
 import { moveOrderStatus } from "@/app/kds/actions";
-import { createOrder } from "@/app/pos/actions";
+import { createOrder, replaceOrder } from "@/app/pos/actions";
 import {
   fetchKitchenOrder,
   fetchKitchenOrders,
@@ -81,6 +81,10 @@ export function createCloudSource(): DataSource {
 
     submitOrder(input) {
       return createOrder(input);
+    },
+
+    replaceOrder(input) {
+      return replaceOrder(input);
     },
 
     moveStatus(input) {

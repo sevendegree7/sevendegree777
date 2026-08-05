@@ -4,7 +4,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { getDataSource } from "@/lib/data";
 import { useLocalOrders } from "@/lib/data/use-local-orders";
-import { mergeBoard, ticketNumber, type KitchenOrder } from "@/lib/kds/orders";
+import {
+  isKitchenStatus,
+  mergeBoard,
+  ticketNumber,
+  type KitchenOrder,
+} from "@/lib/kds/orders";
 import { formatMoney } from "@/lib/pos/money";
 import { buildReceipt, formatTruckTime } from "@/lib/pos/receipt";
 import { startOfTruckDayIso } from "@/lib/reports/dates";
@@ -14,6 +19,11 @@ import { ReceiptView } from "./receipt-view";
 
 type OrderHistoryProps = {
   onClose: () => void;
+  // hands the sale back to the till as a cart. the void of the old ticket
+  // happens on the server at checkout, not here.
+  onEdit: (order: KitchenOrder) => void;
+  // an edit needs the server, because the old ticket lives there
+  offline: boolean;
 };
 
 // what the cashier is told a ticket is doing right now
@@ -32,7 +42,7 @@ const STATUS_STYLE: Record<OrderStatus, string> = {
 // the de-duplicating, so a sale that has been uploaded is shown once and not
 // twice - and the same call means the till and the kitchen can never disagree
 // about which copy of a sale is the real one.
-export function OrderHistory({ onClose }: OrderHistoryProps) {
+export function OrderHistory({ onClose, onEdit, offline }: OrderHistoryProps) {
   const [cloudOrders, setCloudOrders] = useState<KitchenOrder[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -90,7 +100,7 @@ export function OrderHistory({ onClose }: OrderHistoryProps) {
 
   return (
     <div className="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto bg-stone-900/40 p-4">
-      <div className="my-auto w-full max-w-lg rounded-2xl bg-white p-5 shadow-lg">
+      <div className="my-auto w-full max-w-2xl rounded-2xl bg-white p-5 shadow-lg">
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-lg font-medium">today&apos;s orders</h2>
           <div className="flex gap-2">
@@ -131,12 +141,22 @@ export function OrderHistory({ onClose }: OrderHistoryProps) {
         ) : null}
 
         <ul className="mt-4 space-y-2">
-          {orders.map((order) => (
-            <li key={order.id}>
+          {orders.map((order) => {
+            // only a ticket still on the kitchen board can be corrected. once
+            // it is completed the customer has the food, and once it is
+            // cancelled this was already done to it.
+            const onBoard = isKitchenStatus(order.status);
+            // a sale that has not been uploaded has no server row to void
+            const onTabletOnly =
+              order.client_id !== null &&
+              localOrders.some((local) => local.client_id === order.client_id);
+
+            return (
+            <li key={order.id} className="flex items-stretch gap-2">
               <button
                 type="button"
                 onClick={() => setOpenOrderId(order.id)}
-                className="flex w-full items-center justify-between gap-3 rounded-xl border border-stone-200 px-4 py-3 text-left"
+                className="flex flex-1 items-center justify-between gap-3 rounded-xl border border-stone-200 px-4 py-3 text-left"
               >
                 <span className="min-w-0">
                   <span className="block">
@@ -147,10 +167,7 @@ export function OrderHistory({ onClose }: OrderHistoryProps) {
                       {formatTruckTime(order.created_at)}
                     </span>
                   </span>
-                  {order.client_id !== null &&
-                  localOrders.some(
-                    (local) => local.client_id === order.client_id,
-                  ) ? (
+                  {onTabletOnly ? (
                     // still only on this tablet. worth saying, because it is
                     // not in the day's takings in supabase yet.
                     <span className="block text-xs text-amber-800">
@@ -169,8 +186,27 @@ export function OrderHistory({ onClose }: OrderHistoryProps) {
                   </span>
                 </span>
               </button>
+
+              {onBoard ? (
+                <button
+                  type="button"
+                  disabled={offline || onTabletOnly}
+                  title={
+                    offline
+                      ? "an edit needs the internet"
+                      : onTabletOnly
+                        ? "this sale has not been uploaded yet"
+                        : undefined
+                  }
+                  onClick={() => onEdit(order)}
+                  className="shrink-0 rounded-xl border border-stone-300 px-4 text-sm disabled:opacity-40"
+                >
+                  edit
+                </button>
+              ) : null}
             </li>
-          ))}
+            );
+          })}
         </ul>
       </div>
 

@@ -1,5 +1,10 @@
 import type { MoveStatusInput, MoveStatusResult } from "@/app/kds/actions";
-import type { CheckoutInput, CheckoutResult } from "@/app/pos/actions";
+import type {
+  CheckoutInput,
+  CheckoutResult,
+  ReplaceOrderInput,
+  ReplaceOrderResult,
+} from "@/app/pos/actions";
 import type { KitchenOrder } from "@/lib/kds/orders";
 import type { Category, Modifier, Product } from "@/types/database.types";
 
@@ -34,6 +39,9 @@ export type DataSource = {
   // it again. `sinceIso` is a truck-day boundary, not a utc one.
   loadRecentOrders(sinceIso: string): Promise<Loaded<KitchenOrder[]>>;
   submitOrder(input: CheckoutInput): Promise<CheckoutResult>;
+  // correcting a sale: a new order in, the old one voided. online only - the
+  // old ticket lives on the server and cannot be voided from a dead uplink.
+  replaceOrder(input: ReplaceOrderInput): Promise<ReplaceOrderResult>;
   moveStatus(input: MoveStatusInput): Promise<MoveStatusResult>;
 };
 

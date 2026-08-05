@@ -1236,3 +1236,115 @@ is a rule that does not exist.
 - `formatTruckTime("2026-08-05T22:30:00Z")` prints `06/08/2026, 01:30` — cairo,
   not utc, and the date rolls
 - postgrest sending `numeric` as a string does not put `"10.00"` on a receipt
+
+---
+
+## 23) editing a sale (built — step 11)
+
+the cashier rang the wrong thing. they open `orders`, hit `edit`, the sale
+comes back as a cart, they fix it, and they take payment again. the old ticket
+is voided and its ingredients go back.
+
+### what "delete the old order" actually means here
+
+the ask was to remove the old order from the database. it is not done that way,
+and that is deliberate.
+
+`supabase/schema.sql` has **no delete policy** on `orders` or `order_items`, so
+a delete would fail at the database anyway. more to the point, it should fail.
+a deleted row takes the day's takings, the stock that was pulled for it, and
+the record that the sale ever happened. the owner would be looking at a
+revenue figure that quietly does not match the drawer.
+
+so the old sale is **voided** — `status = 'cancelled'`. `/admin/reports` and
+the dashboard already filter cancelled orders out of every total, so from the
+owner's side it is gone. from the auditor's side it is still there, next to the
+ticket that replaced it. that is what a till is supposed to do.
+
+### the order of operations
+
+`replaceOrder` in `src/app/pos/actions.ts`. it creates the new sale **first**,
+then voids the old one:
+
+1. read the old order. if it is not `pending`/`preparing`/`ready`, refuse —
+   a completed sale means the customer already has the food, and a cancelled
+   one has had this done to it already.
+2. `createOrder(input)` — the full existing checkout path, so prices are read
+   from the db, stock is pulled, and the role check is the one that already
+   exists. an edit gets no shortcut around any of it.
+3. if that failed, stop. **the customer still has their original ticket.**
+4. void the old row, guarded by `.in("status", [...])` so a ticket the kitchen
+   finished in the last two seconds is not voided out from under them.
+5. `return_stock_for_order` on the old id.
+
+doing it the other way round — void, then create — means a failed create leaves
+the customer with nothing and the kitchen halfway through cooking a ticket that
+no longer exists. this ordering can produce a duplicate; that ordering can
+produce a hole. a duplicate is visible and fixable, a hole is neither.
+
+### when a step after the sale fails
+
+steps 4 and 5 return `ok: true` with a `warning`, never `ok: false`. the new
+sale is real and the money has been taken — calling that a failure would be a
+lie the cashier acts on. what the warning says instead:
+
+- void failed: `the new ticket is live, but #xxxx was finished before it could
+  be cancelled. void it on the kitchen screen.`
+- stock return failed: `the old ticket was cancelled, but its ingredients did
+  not go back. fix it in admin > inventory.`
+
+**that second one is what happens today**, because `supabase/phase4.sql` has
+not been run yet — see §12. verified live: the edit went through, the receipt
+printed, and that exact sentence appeared. the feature is correct; the database
+is missing the function.
+
+### the role check
+
+`moveOrderStatus` in `src/app/kds/actions.ts` gates on `kitchen`/`admin`, so a
+cashier cannot use it. `replaceOrder` therefore does its own void with a
+`cashier`/`admin` gate, which is the scope the owner picked. that is a second
+copy of a role check, and it is on purpose — reusing the kitchen action would
+have meant widening it, and then a cashier could move any ticket to any status.
+
+### rebuilding the cart
+
+`src/lib/pos/edit-order.ts`, kept out of the `"use server"` file so it can be
+tested. `order_items` stores `unit_price` **with the extras already in it**,
+and the cart stores a base price plus modifiers, so `basePriceOf()` subtracts
+the extras back out. that subtraction goes through the piastre helpers: on real
+prices `20.05 - 12.25` is `7.800000000000001`, and there is a test pinning it.
+
+`cartLinesFromOrder` returns `null` if any line's `product_id` is gone. a
+deleted product cannot be re-priced, and guessing is how a customer gets
+charged the wrong amount.
+
+### what the cashier sees
+
+- a blue banner: `editing ticket #xxxx. it stays live until you confirm, then
+  it is cancelled and its ingredients go back.` — the old ticket really does
+  stay on the kitchen board until the new sale lands, so it says so.
+- `leave it alone` backs out and changes nothing.
+- `edit` only renders on kitchen-status tickets, and is disabled when offline
+  (`an edit needs the internet`) or when the sale is still only on this tablet
+  (`this sale has not been uploaded yet`) — there is no server row to void.
+- the local source's `replaceOrder` refuses outright: `no internet. cancel the
+  old ticket on the kitchen screen and ring the new one.`
+- afterwards the receipt prints with a `replaces #xxxx (cancelled)` row, so the
+  paper says which sale it stands in for.
+
+### verified live
+
+`#6eef6a69` (25.00, butter croissant) → edit → added a turkish coffee → pay:
+
+- new ticket `#6e4c3844`, 45.00, receipt reading `replaces #6eef6a69
+  (cancelled)`
+- `#6eef6a69` now `cancelled` in the history, with its `edit` button gone
+- `/kds` showing `#6e4c3844` with 2 items and no `#6eef6a69`
+- the stock warning above, as expected
+
+### tests
+
+`src/lib/pos/edit-order.test.ts`, 10 of them. the round trip is the one that
+matters: an order line rebuilt into a cart and re-priced comes back to the same
+unit price it was sold at. if that ever breaks, an edit silently changes what
+the customer pays.

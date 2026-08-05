@@ -207,6 +207,17 @@ export function createLocalSource(): DataSource {
       }
     },
 
+    // an edit voids a ticket that lives on the server. there is nothing on
+    // this tablet to void, and a sale rung up as a "replacement" with no void
+    // is just a second sale for the same customer.
+    async replaceOrder() {
+      return {
+        ok: false as const,
+        message:
+          "no internet. cancel the old ticket on the kitchen screen and ring the new one.",
+      };
+    },
+
     async moveStatus() {
       return {
         ok: false,
