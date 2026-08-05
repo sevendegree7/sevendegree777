@@ -351,11 +351,30 @@ path was exercised for real:
   ticket appeared, and stock went `1928 → 1916` — one deduct for the sale that
   uploaded, none for the one that was voided. the trap would have made it 1904
 
-the stock actually coming *back* on a cloud void could not be verified here:
-applying the sql needs the supabase dashboard, and this machine has only the
-anon key and no docker for a local supabase. **verify that one after running
-`supabase/phase4.sql`**: note an ingredient, sell the product, void the ticket,
-and the number should return to where it started.
+the function itself was run against a **real postgres**, not just read over.
+there is no docker on this machine and `.env.local` has only the anon key, but
+`@electric-sql/pglite` is postgres compiled to wasm and needs neither — build the
+five tables the function touches, run `supabase/phase4.sql` against them
+unmodified, and exercise it. all six checks pass:
+
+| check | result |
+| --- | --- |
+| cancelled + deducted | stock back, product **and** modifier lines |
+| the same call again | no-op, stock unmoved |
+| `stock_deducted` after | cleared |
+| a **live** order | refused, `order is not cancelled` |
+| cancelled, never deducted | no-op, `ok: true` |
+| an id that does not exist | `order not found` |
+
+worth keeping in the toolbox: pglite is the way to test sql from a machine that
+cannot reach the project. it is a real postgres, so plpgsql, enums and jsonb all
+behave — the only thing it cannot tell you is whether *their* database took it.
+
+which is the one thing still open. **after running `supabase/phase4.sql`**, note
+an ingredient, sell the product, void the ticket, and the number should return to
+where it started. the file ends with a `select` that prints the function it just
+created — if the result panel shows zero rows, the run did not reach the
+database and nothing else in this section will work.
 
 ---
 
@@ -1002,7 +1021,10 @@ in the order i would do it:
 
 1. **run `supabase/phase4.sql`** on the project. it is one function and it is
    what makes a void give the ingredients back (§12). nothing else is waiting
-   on it, but every void until then loses stock and says so
+   on it, but every void until then loses stock and says so. paste the whole
+   file with **nothing selected** — the supabase editor runs only the selection
+   if there is one — and check the result panel shows one row at the end. if it
+   shows zero, the function was not created, whatever the editor said
 2. **phase 5: deploy to vercel.** everything above only reaches a real tablet
    over https — service workers do not run on a plain `http://192.168.x.x` box.
    this is the step that makes the offline work usable on the truck

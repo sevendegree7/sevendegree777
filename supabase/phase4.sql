@@ -108,3 +108,18 @@ end;
 $$;
 
 grant execute on function public.return_stock_for_order(uuid) to authenticated;
+
+-- proof that the run landed. the result panel must show exactly one row:
+--
+--   return_stock_for_order | p_order_id uuid
+--
+-- zero rows means the create above did not reach the database - most often the
+-- sql editor had part of the text selected and only ran the selection, or the
+-- dashboard was open on a different project. it is not a caching problem.
+select
+  p.proname as function_name,
+  pg_get_function_identity_arguments(p.oid) as arguments
+from pg_proc p
+join pg_namespace n on n.oid = p.pronamespace
+where n.nspname = 'public'
+  and p.proname = 'return_stock_for_order';
