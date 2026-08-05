@@ -22,6 +22,11 @@ export type CheckoutInput = {
   // one id per checkout attempt, unique in the db so a double tap cannot
   // create two orders. also what offline sync will dedupe on later.
   clientId: string;
+  // the id this order should be given. the till leaves it out and lets
+  // postgres choose. a sale taken offline sends the id the tablet already put
+  // on the ticket, so the number the kitchen has been reading does not change
+  // under them when the sale finally goes up.
+  orderId?: string;
   orderType: OrderType;
   paymentMethod: PaymentMethod;
   notes: string | null;
@@ -35,6 +40,13 @@ export type CheckoutResult =
 // postgres unique_violation
 const UNIQUE_VIOLATION = "23505";
 
+// this is the one value the browser is trusted to choose, and only because it
+// is meaningless on its own: an id nobody can guess and nobody is charged by.
+// it still has to look like a uuid before it goes near the insert, so a
+// malformed one is refused here rather than by postgres.
+const UUID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 // writes one order plus its lines. status starts at pending so kds picks it up.
 export async function createOrder(
   input: CheckoutInput,
@@ -47,6 +59,10 @@ export async function createOrder(
     if (!Number.isInteger(line.quantity) || line.quantity < 1) {
       return { ok: false, message: "a cart line has an invalid quantity" };
     }
+  }
+
+  if (input.orderId !== undefined && !UUID.test(input.orderId)) {
+    return { ok: false, message: "this sale has an invalid id" };
   }
 
   const supabase = await createClient();
@@ -164,6 +180,8 @@ export async function createOrder(
   const { data: order, error: orderError } = await supabase
     .from("orders")
     .insert({
+      // only an offline sale sends one. postgres fills it in otherwise.
+      ...(input.orderId ? { id: input.orderId } : {}),
       client_id: input.clientId,
       total_amount: total,
       payment_method: input.paymentMethod,

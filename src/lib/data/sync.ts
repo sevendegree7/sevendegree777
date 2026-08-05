@@ -165,6 +165,10 @@ async function pushOne(record: LocalOrder, clientId: string): Promise<boolean> {
 
     const result = await getCloudSource().submitOrder({
       clientId,
+      // go up under the id this tablet already gave it. the kitchen has been
+      // looking at that number since the sale was rung up, so it should not
+      // change just because the internet came back.
+      orderId: record.order.id,
       orderType: record.order.order_type,
       // the local source only ever takes cash, but send what was stored
       paymentMethod: record.order.payment_method ?? "cash",

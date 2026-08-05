@@ -783,11 +783,7 @@ will not take is not syncing, and the till says that part in words.
 
 ### known wrinkles (accepted, not bugs)
 
-- **the ticket number changes on upload.** the local id was made on the tablet;
-  supabase makes its own on insert. the kitchen sees `#6154a9b6` become
-  `#6ca03896`. the fix is to let `createOrder` accept the local order id — a
-  browser choosing a primary key, which is worth doing deliberately in phase 5,
-  not in passing here
+- ~~**the ticket number changes on upload.**~~ **fixed in step 8, below.**
 - a status move made **during the last round trip** can be lost, because the
   target is read just before the catch-up. it costs the kitchen one more tap on
   a ticket that is already safe in the cloud
@@ -814,6 +810,44 @@ a record pointing at a product that no longer exists was refused and kept, with
 already marked uploaded was not sent again — it only tried the catch-up, and
 the day's total did not move. no console errors on either tab, no server
 errors.
+
+### the ticket number now survives the upload (step 8)
+
+the wrinkle above was real on the floor, not cosmetic. the kitchen calls the
+number out, the cashier writes it on a cup, and then the internet comes back and
+the board silently renumbers the ticket everyone is already working from.
+
+`createOrder` now takes an **optional** `orderId`:
+
+- the till leaves it out and postgres chooses, exactly as before
+- `pushOne` sends `record.order.id` — the id the tablet made when the sale was
+  rung up, so the row goes into supabase under the number already on the screen
+
+that means the browser picks a primary key, which deserves the suspicion it
+usually gets. why it is safe here:
+
+- it is **validated against a uuid pattern** in the server action before it goes
+  near the insert
+- it is an `insert`, so a chosen id can only ever *fail* on a collision, never
+  overwrite an existing order
+- it decides nothing. every price is still re-read from the db, the role is
+  still checked, `created_by` is still stamped by the server. an id is the one
+  field where the tablet's answer is as good as the server's
+- the retry path is unchanged and got slightly better: a re-sent sale now
+  collides on `id` **and** `client_id`, and the existing `client_id` lookup
+  returns the same order it always did — but now with an id that matches the
+  local one
+
+`mergeBoard` was the thing to check before doing this, and it was already right:
+it dedupes local against cloud on **`client_id`**, not on `id`, so the local and
+cloud copies of one sale never both draw during the handover.
+
+how it was tested: production build on `:3001`, two tabs, both offline. rang up
+a `turkish coffee` on the till — stored locally as `b1cec0bb-…`, and the kitchen
+board showed **`#b1cec0bb`**. brought the connection back, the worker uploaded
+and the local record was dropped. then a **full reload** of `/kds` with **zero
+local records left**, so the board could only be reading supabase: still
+`#b1cec0bb`, takeaway, 1× turkish coffee. no console errors.
 
 ---
 
@@ -1030,11 +1064,10 @@ in the order i would do it:
    this is the step that makes the offline work usable on the truck
 3. **a dry run on the actual tablet**, on truck wifi. all of phase 4 was
    verified in a desktop browser against a production build
-4. **the ticket number changes on upload** (§18). the fix is letting
-   `createOrder` accept the local order id — a browser choosing a primary key,
-   worth doing deliberately
-5. thermal printing (esc/pos), and the reprint stub from §3
-6. touch qa on the real device: button sizes on the till and the board
-7. there are **no automated tests** in this repo. everything so far was checked
+4. thermal printing (esc/pos), and the reprint stub from §3
+5. touch qa on the real device: button sizes on the till and the board
+6. there are **no automated tests** in this repo. everything so far was checked
    by running it. if you add a test setup, start with `src/lib/pos/money.ts` and
-   `src/lib/pos/cart.ts` — pure functions, and they decide what customers pay
+   `src/lib/pos/cart.ts` — pure functions, and they decide what customers pay.
+   for sql, `@electric-sql/pglite` runs a real postgres with no docker and no
+   project credentials — see §12 for how the stock-return function was checked
