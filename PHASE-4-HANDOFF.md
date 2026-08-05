@@ -1,14 +1,17 @@
 # phase 4 handoff — harden + offline
 
-> **phase 4 is done and merged.** this file was written as a plan and then
-> grown as the work landed, so it reads in two halves:
+> **phase 4 is written and verified, but nothing is merged yet** — it is five
+> stacked pull requests, #12 to #16, and §20 has the order they go in. this
+> file was written as a plan and then grown as the work landed, so it reads in
+> two halves:
 >
 > - **§0–§9 are the original plan**, and parts of it never happened — it says
 >   "lan sync" throughout, and there is no lan (§13)
-> - **§11–§23 are what was actually built**, one section per merged pr
+> - **§11–§23 are what was actually built**, one section per pr
 >
 > **if you are picking this project up, read §20 first**, then §13. between
-> them they cover what runs today, how to build and test it, and what is left.
+> them they cover what runs today, how to build and test it, what is left, and
+> what was deliberately left out.
 
 phase 1–3 are done in code on `main`.
 
@@ -990,6 +993,9 @@ online, exactly what phases 2 and 3 did. with no internet:
 | opening with no internet | `public/sw.js`, `src/app/manifest.ts`, `src/components/service-worker.tsx` |
 | who is on shift | `src/lib/auth/shift.ts`, `src/components/shift-keeper.tsx`, `src/lib/auth/roles.ts` |
 | the screens | `src/app/pos/pos-screen.tsx`, `src/app/kds/kds-screen.tsx`, `src/app/login/page.tsx` |
+| looking a sale up again | `src/app/pos/components/order-history.tsx` |
+| what a receipt says | `src/lib/pos/receipt.ts`, `src/app/pos/components/receipt-view.tsx` |
+| correcting a sale | `src/lib/pos/edit-order.ts`, `replaceOrder` in `src/app/pos/actions.ts` |
 | every write | `src/app/pos/actions.ts`, `src/app/kds/actions.ts` |
 
 ### running it
@@ -1051,34 +1057,103 @@ things that will waste your time if you do not know them:
 - the shift note is **not** a credential and must never become one — no token,
   no password on the device (§19)
 
+### the state of the branches
+
+**nothing is merged yet.** phase 4 is five pull requests stacked on top of each
+other, each one based on the previous branch rather than on `main`, because each
+step needed the one before it. github shows a small diff for each as long as
+they are merged **bottom up**:
+
+| pr | branch | what it is |
+|----|--------|-----------|
+| #12 | `phase-4-void-returns-stock` → `main` | voiding a ticket gives the ingredients back (§12) |
+| #13 | `phase-4-stable-ticket-number` → #12 | a sale keeps its ticket number when it uploads (§18) |
+| #14 | `phase-4-tests` → #13 | the test suite (§21) |
+| #15 | `phase-4-order-history` → #14 | today's orders + reprintable receipts (§22) |
+| #16 | `phase-4-edit-order` → #15 | editing a sale (§23) |
+
+merge #12 first, then #13, and so on. merging out of order will make the later
+ones look like they contain the earlier ones' changes.
+
+**#12 should not be merged until `supabase/phase4.sql` has actually been run** —
+the code and the database change together, and merging the code first means
+every void between then and the sql silently loses stock.
+
 ### what is left
 
 in the order i would do it:
 
-1. **run `supabase/phase4.sql`** on the project. it is one function and it is
-   what makes a void give the ingredients back (§12). nothing else is waiting
-   on it, but every void until then loses stock and says so. paste the whole
-   file with **nothing selected** — the supabase editor runs only the selection
-   if there is one — and check the result panel shows one row at the end. if it
-   shows zero, the function was not created, whatever the editor said
-2. **phase 5: deploy to vercel.** everything above only reaches a real tablet
-   over https — service workers do not run on a plain `http://192.168.x.x` box.
-   this is the step that makes the offline work usable on the truck
-3. **a dry run on the actual tablet**, on truck wifi. all of phase 4 was
-   verified in a desktop browser against a production build
-4. thermal printing (esc/pos), and the reprint stub from §3
-5. touch qa on the real device: button sizes on the till and the board
-6. ~~there are **no automated tests** in this repo.~~ there are now — `npm test`,
-   46 of them over the money math, the cart, the board merge and the order-id
-   guard (§21). they cover the pure logic only. everything with a component or
-   a supabase call is still checked by running it
+1. **run `supabase/phase4.sql`** on the project. one function. it is what makes
+   a void — and now an edit (§23) — give the ingredients back. paste the whole
+   file with **nothing selected**, because the supabase editor runs only the
+   selection if there is one, and check the result panel shows **one row** at
+   the end. if it shows zero the function was not created, whatever the editor
+   said. until this is done, every edit prints its receipt next to `the old
+   ticket was cancelled, but its ingredients did not go back` — that is the
+   feature being honest, not a bug
+2. **fix the stock that is already wrong.** every ticket voided before the
+   function existed still has its ingredients deducted. known ones: `#76b93f62`
+   and `#50a45528` (12 g coffee each), `#a811686d` (250 ml juice base), and
+   `#6eef6a69`, which the §23 edit voided during testing. once the function is
+   in, this catches all of them whatever the list has grown to:
+   ```sql
+   select id, public.return_stock_for_order(id)
+   from public.orders
+   where status = 'cancelled' and stock_deducted;
+   ```
+   write down `/admin/inventory` before and after. coffee was **1916 g** and
+   juice base **4500 ml** when this was measured; the two coffee tickets alone
+   should put coffee at **1940 g** and juice base at **4750 ml**, plus whatever
+   the croissant ticket gives back
+3. **merge the stack**, bottom up, per the table above
+4. **phase 5: deploy to vercel.** everything in phase 4 only reaches a real
+   tablet over https — service workers do not run on a plain `http://192.168.x.x`
+   box. this is the step that makes the offline work usable on the truck
+5. **a dry run on the actual tablet**, on truck wifi. all of phase 4 was
+   verified in a desktop browser against a production build, never on the device
+   it is for
+6. **thermal printing (esc/pos).** today the receipt goes to `window.print()` and
+   the browser's dialog. the paper is `#receipt-paper` and `globals.css` sizes it
+   to 72mm; a driver replaces the `print` button and nothing else, because
+   `buildReceipt()` already returns the right shape (§22)
+7. **touch qa on the real device** — button sizes on the till and the board
+
+### known gaps, deliberately not built
+
+these are not bugs. they were decided against, or ran out of scope. if you pick
+one up, this is what you need to know:
+
+- **a normal sale does not print.** the receipt prints after an **edit**, and
+  when you open a sale from the history. after an ordinary checkout it does not.
+  that is roughly two lines in `pos-screen.tsx` — call `buildReceipt()` on the
+  re-read order the same way the edit path already does
+- **`src/lib/data/sync.ts` has no tests.** it is the one important file the
+  suite does not reach, because it needs a fake `localStorage` and a fake cloud
+  source. this was started and put down when the order history came up. §21
+  lists it as the next test to write
+- **only today's sales are in the history.** the boundary is
+  `startOfTruckDayIso()` (§22). yesterday's ticket cannot be looked up or
+  reprinted. no search, no date picker
+- **an edit cannot be undone.** it voids and rings a new sale. undoing it means
+  editing the new ticket, which leaves both voids in the record — correct, but
+  the day's orders list gets long
+- **the history cannot show sales taken before the connection dropped.** offline
+  it lists what is on this tablet and says so. there is nothing on the device to
+  show for the rest, and that is a limit rather than a defect
+- **no component or integration tests.** 67 tests over pure functions only.
+  anything with a component or a supabase call is checked by running it, which
+  is why every section of this file ends with a "verified live" paragraph — keep
+  that habit
 
 ---
 
 ## 21) tests (built — step 9)
 
-`npm test` — vitest, 46 tests, about a fifth of a second. no watch mode in the
-script; run `npx vitest` if you want one.
+`npm test` — vitest, about half a second. no watch mode in the script; run
+`npx vitest` if you want one.
+
+it was 46 tests when this section was written. steps 10 and 11 took it to **67
+across 6 files** — see §22 and §23 for the ones they added.
 
 there were none before this. everything in phases 1–4 was checked by running
 it, which is the right way to check a kitchen board and the wrong way to check
