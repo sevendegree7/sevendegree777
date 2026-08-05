@@ -30,6 +30,9 @@ export type DataSource = {
   loadMenu(): Promise<Loaded<MenuSnapshot>>;
   loadKitchenOrders(): Promise<Loaded<KitchenOrder[]>>;
   loadKitchenOrder(orderId: string): Promise<Loaded<KitchenOrder | null>>;
+  // the sales behind the till, newest first, for looking one up and printing
+  // it again. `sinceIso` is a truck-day boundary, not a utc one.
+  loadRecentOrders(sinceIso: string): Promise<Loaded<KitchenOrder[]>>;
   submitOrder(input: CheckoutInput): Promise<CheckoutResult>;
   moveStatus(input: MoveStatusInput): Promise<MoveStatusResult>;
 };

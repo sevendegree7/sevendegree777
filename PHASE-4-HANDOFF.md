@@ -5,7 +5,7 @@
 >
 > - **§0–§9 are the original plan**, and parts of it never happened — it says
 >   "lan sync" throughout, and there is no lan (§13)
-> - **§11–§21 are what was actually built**, one section per merged pr
+> - **§11–§23 are what was actually built**, one section per merged pr
 >
 > **if you are picking this project up, read §20 first**, then §13. between
 > them they cover what runs today, how to build and test it, and what is left.
@@ -1142,3 +1142,97 @@ not be reached from a test where it was.
   rather than an afternoon
 - the sql. that has its own answer in §12: `@electric-sql/pglite` runs a real
   postgres with no docker and no project credentials
+
+## 22) order history + receipt (built — step 10)
+
+the till grew an **orders** button. it opens today's sales, newest first, and
+any one of them can be opened as a receipt and printed again.
+
+this is the first half of "edit an order from the history". the second half
+(§23) needs this list to exist first, and it is worth having on its own: a
+cashier being asked "can i have the receipt again" had no answer before this.
+
+### where the list comes from
+
+both stores at once, exactly like the kitchen board:
+
+```
+mergeBoard(cloud, local).reverse()
+```
+
+`mergeBoard` is the same function `/kds` uses, so the till and the kitchen can
+never disagree about which copy of a sale is the real one. it dedupes on
+`client_id`, which is why a sale that has just been uploaded shows **once** and
+not twice. `.reverse()` is there because the kitchen wants oldest first and a
+cashier looking something up wants the opposite.
+
+the boundary is `startOfTruckDayIso()` — the same truck-clock day the reports
+are cut on, so a 1am sale is still filed under last night rather than jumping
+to a new day mid-shift.
+
+### it shows cancelled orders on purpose
+
+`/admin/reports` filters cancelled out, because they are not takings. the
+history must not: "where did that ticket go" is exactly the question it is
+there to answer, and §23 makes cancelled orders something the cashier creates
+on purpose.
+
+### offline
+
+`loadRecentOrders` is the one read the **local** source can honestly answer.
+the sales taken on this tablet are right there in `localStorage`, so with no
+internet the panel still lists them, marks each one `on this tablet`, and
+prints its receipt. it cannot show sales taken before the connection dropped,
+which is a real limit and not a bug — there is nothing on the device to show.
+
+verified live: went offline, sold a butter croissant, and `#6eef6a69` appeared
+in the history with the `on this tablet` chip and printed correctly. after the
+connection came back the sync worker uploaded it, and it then appeared **once**,
+still `#6eef6a69` — which is §18's ticket-number guarantee holding up.
+
+### the receipt
+
+`src/lib/pos/receipt.ts` decides what a receipt says. it is a plain object, not
+jsx, because the same receipt is printed from three places: after a sale, from
+the history, and after an edit (§23).
+
+it re-prices nothing. `order_items.unit_price` is the price that was actually
+charged, snapshotted at checkout, so a menu edit next week cannot rewrite a
+receipt a customer is holding. where it does do arithmetic — quantity × unit
+price — it goes through the piastre helpers, for the reason in §12.
+
+`receipt.total` is read off the order row, not re-added from the lines. that is
+the number the customer paid and the number in the db. `receiptLinesTotal()`
+exists so a disagreement between the two can be spotted, and is never charged
+from.
+
+### printing
+
+there is no thermal printer yet. the paper carries `id="receipt-paper"` and
+`globals.css` has:
+
+```css
+@media print {
+  body * { visibility: hidden; }
+  #receipt-paper, #receipt-paper * { visibility: visible; }
+  #receipt-paper { position: absolute; top: 0; left: 0; width: 72mm; }
+}
+```
+
+`window.print()` then hands it to the browser's own dialog. 72mm is an 80mm
+roll minus the dialog's margin. an esc/pos driver later replaces the `print`
+button and nothing else — the receipt object is already the right shape for it.
+
+the print rules were checked in the **built** css, not just the source, because
+tailwind v4 processes `globals.css` and a rule that does not survive the build
+is a rule that does not exist.
+
+### tests
+
+`src/lib/pos/receipt.test.ts`, 11 of them. the ones that matter:
+
+- the order row wins over the lines when they disagree about the total
+- `receiptLineTotal(8.1, 3)` is `24.3`, where `8.1 * 3` is `24.299999999999997`
+- `formatTruckTime("2026-08-05T22:30:00Z")` prints `06/08/2026, 01:30` — cairo,
+  not utc, and the date rolls
+- postgrest sending `numeric` as a string does not put `"10.00"` on a receipt

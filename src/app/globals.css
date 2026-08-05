@@ -17,3 +17,28 @@ body {
   color: var(--foreground);
   font-family: var(--font-geist-sans), sans-serif;
 }
+
+/* printing a receipt.
+   the till is a full screen app, so printing it as-is would put the menu grid
+   and the cart on the paper. everything is hidden and only the receipt is put
+   back, which is why the paper carries an id rather than a class. */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+
+  #receipt-paper,
+  #receipt-paper * {
+    visibility: visible;
+  }
+
+  #receipt-paper {
+    position: absolute;
+    top: 0;
+    left: 0;
+    /* 80mm thermal roll, minus the margin the print dialog adds */
+    width: 72mm;
+    background: #fff;
+    color: #000;
+  }
+}

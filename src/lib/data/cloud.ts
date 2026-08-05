@@ -2,7 +2,11 @@
 
 import { moveOrderStatus } from "@/app/kds/actions";
 import { createOrder } from "@/app/pos/actions";
-import { fetchKitchenOrder, fetchKitchenOrders } from "@/lib/kds/queries";
+import {
+  fetchKitchenOrder,
+  fetchKitchenOrders,
+  fetchRecentOrders,
+} from "@/lib/kds/queries";
 import { createClient } from "@/lib/supabase/client";
 
 import { readCachedMenu, writeCachedMenu } from "./menu-cache";
@@ -68,6 +72,11 @@ export function createCloudSource(): DataSource {
     async loadKitchenOrder(orderId) {
       const { order, error } = await fetchKitchenOrder(supabase, orderId);
       return error ? loadFailed(error) : loaded(order);
+    },
+
+    async loadRecentOrders(sinceIso) {
+      const { orders, error } = await fetchRecentOrders(supabase, sinceIso);
+      return error ? loadFailed(error) : loaded(orders);
     },
 
     submitOrder(input) {

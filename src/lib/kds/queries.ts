@@ -98,6 +98,46 @@ export async function fetchKitchenOrders(
   };
 }
 
+// the order history behind the till: every sale since a given instant,
+// newest first, whatever status it ended on.
+//
+// this is not the kitchen board and must not be filtered like one. a cashier
+// looking something up needs the completed ones (that is most of them) and the
+// cancelled ones too, because "why is this ticket gone" is exactly the
+// question the history is there to answer.
+export async function fetchRecentOrders(
+  supabase: KdsClient,
+  sinceIso: string,
+): Promise<KitchenOrdersResult> {
+  const { data, error } = await supabase
+    .from("orders")
+    .select("*")
+    .gte("created_at", sinceIso)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    return { orders: [], error: error.message };
+  }
+
+  const rows = data ?? [];
+  const { items, error: itemsError } = await fetchItemsByOrder(
+    supabase,
+    rows.map((row) => row.id),
+  );
+
+  if (itemsError) {
+    return { orders: [], error: itemsError };
+  }
+
+  return {
+    orders: rows.map((row) => ({
+      ...normalizeOrder(row),
+      items: items.get(row.id) ?? [],
+    })),
+    error: null,
+  };
+}
+
 // one ticket after a realtime event.
 // order_items is not in the realtime publication, so the lines are always
 // fetched here rather than read off the event payload.

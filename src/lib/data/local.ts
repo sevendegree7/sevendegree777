@@ -5,7 +5,7 @@ import { cartTotal, lineUnitPrice, type PricedLine } from "@/lib/pos/cart";
 import type { OrderItem, SelectedModifier } from "@/types/database.types";
 
 import { readCachedMenu } from "./menu-cache";
-import { saveLocalOrder } from "./order-store";
+import { listLocalOrders, saveLocalOrder } from "./order-store";
 import {
   loadFailed,
   loaded,
@@ -41,6 +41,24 @@ export function createLocalSource(): DataSource {
     async loadKitchenOrder() {
       return loadFailed<KitchenOrder | null>(
         "no internet. this ticket cannot be re-read right now.",
+      );
+    },
+
+    // the one read this source can honestly answer. the sales taken on this
+    // tablet are right here, so the cashier can still look one up and print it
+    // again with no internet - it just cannot show the ones taken before the
+    // connection dropped, which the panel says out loud.
+    async loadRecentOrders(sinceIso) {
+      const since = Date.parse(sinceIso);
+
+      return loaded(
+        listLocalOrders()
+          .map((local) => local.order)
+          .filter(
+            (order) =>
+              Number.isNaN(since) || Date.parse(order.created_at) >= since,
+          )
+          .reverse(),
       );
     },
 

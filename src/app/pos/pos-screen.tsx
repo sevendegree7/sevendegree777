@@ -32,6 +32,7 @@ import { CartPanel } from "./components/cart-panel";
 import { CategoryTabs } from "./components/category-tabs";
 import { ConfirmDialog } from "./components/confirm-dialog";
 import { ModifierModal } from "./components/modifier-modal";
+import { OrderHistory } from "./components/order-history";
 import { ProductGrid } from "./components/product-grid";
 
 type PosScreenProps = {
@@ -58,6 +59,7 @@ export function PosScreen({ initialMenu }: PosScreenProps) {
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash");
   const [orderNotes, setOrderNotes] = useState("");
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   // new seed after every sale that lands, so two identical carts in a row are
   // two orders. it survives a failed attempt, which is what makes a retry safe.
   const [saleSeed, setSaleSeed] = useState(() => crypto.randomUUID());
@@ -318,6 +320,13 @@ export function PosScreen({ initialMenu }: PosScreenProps) {
       <div className="flex flex-col gap-4">
         <div className="flex flex-wrap items-center gap-3">
           <ConnectionBanner />
+          <button
+            type="button"
+            onClick={() => setHistoryOpen(true)}
+            className="rounded-full border border-stone-300 px-3 py-1 text-sm"
+          >
+            orders
+          </button>
           {offline ? (
             <span className="text-sm text-stone-600">
               cash only. every sale is saved on this tablet.
@@ -435,6 +444,10 @@ export function PosScreen({ initialMenu }: PosScreenProps) {
             setModalProduct(null);
           }}
         />
+      ) : null}
+
+      {historyOpen ? (
+        <OrderHistory onClose={() => setHistoryOpen(false)} />
       ) : null}
 
       {confirmOpen ? (
