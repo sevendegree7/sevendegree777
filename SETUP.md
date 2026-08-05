@@ -21,15 +21,20 @@ you already created github and supabase accounts. do these next.
 2. copy:
    - **project url**
    - **anon public** key
+   - **service_role** key (server only, for admin staff management)
 3. in this repo, copy `.env.example` to `.env.local`
 4. paste:
 
 ```env
 NEXT_PUBLIC_SUPABASE_URL=https://xxxx.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOi...
+SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOi...
 ```
 
 never commit `.env.local`
+
+add the same three values to Vercel. never name the service key with a
+`NEXT_PUBLIC_` prefix.
 
 ---
 
@@ -45,6 +50,22 @@ never commit `.env.local`
 8. open `supabase/phase3-seed.sql` and run (inventory + recipes)
 9. open `supabase/public-menu.sql` and run (public qr menu)
 10. open `supabase/phase3-fixes.sql` and run (restock function + tighter menu policy)
+
+the steps above describe a brand-new bootstrap. for the already-running
+production project, all later database changes use versioned migrations:
+
+```bash
+npx supabase login
+npx supabase link --project-ref YOUR_PROJECT_REF
+npx supabase db push
+```
+
+the forward migrations currently in the repo are:
+
+- `supabase/migrations/20260805130000_launch_hardening.sql` — settings, tickets, finished-goods stock, staff flags
+- `supabase/migrations/20260805150000_seven_fusions_menu.sql` — replaces the placeholder bakery list with the seven fusions from the brand book
+
+do not paste production hot-fixes or edit a migration after it has been applied.
 
 if realtime line fails because it was already added, ignore that one error and continue.
 

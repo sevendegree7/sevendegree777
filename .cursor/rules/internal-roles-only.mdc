@@ -1,0 +1,36 @@
+---
+description: RLS/roles are internal staff only — customers need a separate model
+alwaysApply: true
+---
+
+# auth roles are internal only (for now)
+
+there is **no customer web portal** yet. auth + `profiles.role` + rls only support **staff**:
+
+- `admin`
+- `cashier`
+- `kitchen`
+
+## do not
+
+- add end-customer / member / “user” logins on top of the same `user_role` enum without a redesign
+- reuse staff rls (`orders` select for all authenticated kitchen/admin patterns, inventory reads, etc.) for public accounts
+
+## why it will break if you bolt users on
+
+- `current_user_role()` and policies assume every `authenticated` identity is staff
+- kitchen/admin need broad `orders` / `order_items` select; a customer account under the same policies could inherit the wrong access or get blocked in confusing ways
+- middleware sends unknown/missing roles toward staff homes / login — no customer destination
+- public surface today is **anon** `/menu` only (read menu), not logged-in customers
+
+## when customers are added later
+
+- new role space (e.g. `customer`) **or** separate auth surface / table
+- explicit rls: customers see **only their** orders (and never inventory/waste/admin)
+- keep staff policies scoped to internal roles (`in ('admin','cashier','kitchen')`), never “any authenticated”
+- treat as a deliberate phase + migrations — not a quick enum add
+
+## current public access
+
+- qr `/menu` = `anon` select on categories/products/modifiers only
+- ordering stays at the truck (pos), not a customer checkout portal

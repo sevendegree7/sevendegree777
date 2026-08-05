@@ -1,0 +1,37 @@
+---
+description: Production DB changes must use versioned migrations only
+alwaysApply: true
+---
+
+# database migrations (production)
+
+prod always needs migrations. never "just run sql" against a live system.
+
+## rules
+
+- treat a running database as immutable except through **versioned migration files**
+- new schema/data fixes = new migration file (timestamped), not editing history that already ran in prod
+- migrations must be **additive / forward-only** for live systems: add columns/tables/indexes safely; avoid destructive changes without an explicit expand→migrate→contract plan
+- do not rely on paste-into-SQL-editor as the production path
+- local/dev may still use supabase sql editor while bootstrapping, but anything meant for shared/prod must land in `supabase/migrations/`
+- teammate and deploy pipelines apply the same migration history — no snowflake prod fixes
+
+## when adding schema
+
+1. create `supabase/migrations/YYYYMMDDHHMMSS_description.sql`
+2. document it in the relevant phase handoff
+3. apply via supabase cli (`supabase db push` / linked migrate) for shared environments
+
+## data seeds / data migrations
+
+- do **not** hardcode uuids in seed or data migration sql
+- let postgres assign ids (`gen_random_uuid()` column defaults)
+- join / upsert by natural keys (name, sku, email, etc.)
+- exception: linking to an **external** id you do not control (e.g. `auth.users.id` in profiles) — that uuid comes from auth, you do not invent it
+
+## never
+
+- hot-fix prod tables by hand with no migration file
+- rewrite an already-applied migration after it has run on shared/prod
+- assume "stateless app deploys" cover database — app is stateless; **schema changes are not** and need migrations
+- bake fixed uuids into seed data (`11111111-...`) so environments diverge

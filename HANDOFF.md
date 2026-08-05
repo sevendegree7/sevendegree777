@@ -2,18 +2,20 @@
 
 give this whole file to claude code (or cursor) as project context before coding.
 
-last updated: phases 1–4 are done and merged into main. phase 5 (deploy) is next.
+last updated: deployment, offline dry run, and launch-hardening code are done
+locally. read `PHASE-5-HANDOFF.md` before deploying this change.
 
 **picking this up for the first time?** read this file for the shape of the
-project, then `PHASE-4-HANDOFF.md` §13 and §20 — §13 is the decision that
-changed the design (there is only one tablet), §20 is what runs today, how to
-build it, how to test it with no internet, and what is left.
+project, then `PHASE-5-HANDOFF.md`. use `PHASE-4-HANDOFF.md` §13 and §20 for
+the one-tablet offline design and its test procedure.
 
 ---
 
 ## 1) what this project is
 
-custom cloud pos for a bakery / food truck (brownies, cinnabon, croissants, drinks).
+custom cloud pos for seven degrees (7°) — cairo's cartographer of taste.
+seven fusion desserts (roma, tokyo, riyadh, beirut, madrid, paris, marrakesh),
+sold from a cold-prep kiosk at nilos bay.
 
 goals:
 
@@ -70,22 +72,31 @@ phase 4 is done and merged — the truck can now trade with no internet:
 - when the connection returns the sales upload themselves, once — a repeat of
   the same sale cannot double-charge, `orders.client_id` sees to that
 - the tablet opens a shift with no internet, from a note it wrote while online
-- built in six merged prs, each tested live against a production build:
+- cashier history can void or replace a sale; stock returns once
+- visible tickets count 1, 2, 3... and reset at midnight Egypt time without
+  changing after offline sync
+- admin controls staff accounts, KDS mode, inventory mode and receipt copies
+- finished-goods mode receives ready bakes into the vitrine and deducts pieces
+- all new database work is in the forward migrations documented in
+  `PHASE-5-HANDOFF.md`
+- brand system is wired through the app: navy / cream / saffron tokens, light
+  and dark themes following the device by default, arabic/english on the till
+  and login (with rtl), account menu top-right, and the seven-fusions menu
+  seeded from the brand book
+- built in small merged prs, each tested live against a production build:
   `PHASE-4-HANDOFF.md` §11–§20
 
 details, gotchas and the live test results: `PHASE-2-HANDOFF.md`.
 phase 3 inventory / admin details: `PHASE-3-HANDOFF.md`.
 phase 4 offline details, and the map of which file does what: `PHASE-4-HANDOFF.md`.
 
-not done yet:
+still needed before full launch:
 
-- deployment (phase 5) — nothing is hosted yet, and the offline work only
-  reaches a real tablet over https
-- a dry run on the actual tablet on truck wifi
-- thermal printing
-- reversing stock on late cancels (`PHASE-4-HANDOFF.md` §12)
-- deeper food-cost analytics
-- automated tests — there are none; everything so far was checked by running it
+- apply the launch migration and add the server-only service-role key in Vercel
+- test with the actual thermal printer; browser printing already emits the two
+  copies, but silent ESC/POS depends on the printer model/interface
+- final tablet touch/printer/cash-drawer acceptance test and backup procedure
+- optional later: deeper food-cost/profit analytics
 
 public customer menu: `/menu` (qr) — see `SETUP.md` / `supabase/public-menu.sql`
 
@@ -211,6 +222,7 @@ copy `.env.example` -> `.env.local`:
 ```env
 NEXT_PUBLIC_SUPABASE_URL=...
 NEXT_PUBLIC_SUPABASE_ANON_KEY=...
+SUPABASE_SERVICE_ROLE_KEY=... # server only; staff management
 ```
 
 never commit `.env.local`.
@@ -272,9 +284,9 @@ full details: **`PHASE-4-HANDOFF.md`** — §13 for the decision that shaped it,
   `orders.client_id`, through the same `createOrder` as an online sale, so
   stock deduct stays one path — §18
 - the shift opens with no internet, from a note written while online — §19
+- voiding a ticket puts the raw materials back — §12
 
-still open from this phase: touch qa on the real tablet, reprint, and the
-late-cancel stock gap in §12.
+still open from this phase: touch qa on the real tablet, and reprint.
 
 ### phase 5 — cloud go-live (next)
 - vercel deploy + prod env
@@ -345,7 +357,9 @@ printing, and touch qa on the real tablet.
 1. `git pull origin main`
 2. get `.env.local` from the owner (shared supabase) — it is not in the repo
 3. run `supabase/phase3.sql` + `phase3-seed.sql` + `public-menu.sql` +
-   `phase3-fixes.sql` on the project if they have not been run
+   `phase3-fixes.sql` on the project if they have not been run, and
+   `supabase/phase4.sql` — that last one is what makes a voided ticket give its
+   ingredients back, and voids lose stock until it is in
 4. `npm install`, then `npm run dev` and smoke test: admin, one sale, the stock
    drop, the kitchen board
 5. read `PHASE-4-HANDOFF.md` §13 (the one-tablet decision) and §20 (what runs

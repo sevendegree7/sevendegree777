@@ -1,14 +1,23 @@
 # phase 4 handoff — harden + offline
 
-> **phase 4 is done and merged.** this file was written as a plan and then
-> grown as the work landed, so it reads in two halves:
+> launch update: do not run the old `supabase/phase4.sql` references in this
+> historical document. its stock-return function and the later launch changes
+> are now delivered by
+> `supabase/migrations/20260805130000_launch_hardening.sql`. see
+> `PHASE-5-HANDOFF.md`.
+
+> **phase 4 is written and verified, but nothing is merged yet** — it is five
+> stacked pull requests, #12 to #16, and §20 has the order they go in. this
+> file was written as a plan and then grown as the work landed, so it reads in
+> two halves:
 >
 > - **§0–§9 are the original plan**, and parts of it never happened — it says
 >   "lan sync" throughout, and there is no lan (§13)
-> - **§11–§20 are what was actually built**, one section per merged pr
+> - **§11–§23 are what was actually built**, one section per pr
 >
 > **if you are picking this project up, read §20 first**, then §13. between
-> them they cover what runs today, how to build and test it, and what is left.
+> them they cover what runs today, how to build and test it, what is left, and
+> what was deliberately left out.
 
 phase 1–3 are done in code on `main`.
 
@@ -277,36 +286,104 @@ do not go back to a per-tap uuid.
 
 ---
 
-## 12) known gap: stock is not returned on a late cancel
+## 12) stock comes back on a cancel (built — step 7)
+
+> **needs `supabase/phase4.sql` run on the project.** until it is, voiding a
+> ticket cancels it and says on screen that the stock did not go back. that is
+> the honest failure, not the fixed one — run the sql.
 
 phase 3 pulls raw materials in `createOrder` right after the lines are written
-(`deduct_stock_for_order`, guarded by `orders.stock_deducted`).
+(`deduct_stock_for_order`, guarded by `orders.stock_deducted`). nothing put
+them back, so a cancelled order quietly lost the ingredients it never used.
 
-**nothing returns that stock if the order is cancelled afterwards.**
+the old note here said the gap could only be hit by cancelling a row by hand in
+the dashboard, because nothing in the ui could cancel at all. that was true, and
+it was also the wrong place to leave it: a truck needs to void a sale — the
+customer walks off, or it was rung up wrong — and the answer cannot be "open the
+supabase dashboard".
 
-where it stands today:
+### what it does
 
-- the kds cannot cancel: `ALLOWED_MOVES` in `src/lib/kds/orders.ts` only walks
-  `pending → preparing → ready → completed` (plus one step back). there is no
-  `cancelled` move anywhere in the ui
-- the pos only writes `cancelled` when the **order lines fail to insert** — that
-  path returns before the deduct rpc runs, so nothing was pulled. safe
-- so the gap can only be hit by cancelling a row **by hand** in the supabase
-  dashboard, and today that silently loses stock
+- **`return_stock_for_order(p_order_id uuid)`** in `supabase/phase4.sql`, the
+  mirror of the deduct. two guards, and both matter:
+  - the order has to **actually be cancelled**. without that check it is a way
+    to add stock to a live sale, and the count drifts up every call
+  - `stock_deducted` has to be true, and is set false **in the same
+    transaction**. so a double tap, a retry, or two screens voiding the same
+    ticket can only return the stock once
+  - the arithmetic is `current_stock = current_stock + n` inside postgres,
+    never read-then-write — that race is already logged from the restock bug
+- **`cancelled` is now an allowed move** from `pending`, `preparing` and
+  `ready` in `ALLOWED_MOVES`. it is not a step along the pipeline, it is a jump
+  off it, which is why it is on every row
+- **the server action cancels first, then returns the stock**, and only on the
+  tap that actually changed the row. a screen that lost the race never deducted
+  anything to give back
+- **a void button on each kitchen card**: small, grey and on its own line, well
+  away from the big `mark ready` button that gets tapped with the side of a
+  thumb all day. it asks first, on the card itself rather than in a dialog over
+  the board, and the confirm button names the ticket (`void #76b93f62`) so you
+  cannot void the wrong one
 
-if you add a cancel button (phase 4 or later), it must not be a plain status
-update. it needs a `return_stock_for_order(order_id)` rpc that:
+### the offline trap
 
-- only acts when `stock_deducted = true`
-- adds each recipe/modifier quantity back inside postgres
-  (`current_stock = current_stock + n`, never read-then-write — that race is
-  already logged from the restock bug)
-- sets `stock_deducted = false` in the same statement so a double tap cannot
-  return the stock twice
-- lives in `supabase/phase4.sql`
+a sale voided on the tablet **before it was ever uploaded** was the sharp edge
+here. left alone, the sync worker would have uploaded it as a fresh `pending`
+order, pulled the ingredients for it, and then tried to walk it to `cancelled` —
+a status `catchUp` could not reach, so it would have failed *after* taking the
+stock.
 
-until then, a hand-cancelled order is fixed by restocking on
-`/admin/inventory`.
+so `pushOne` drops it instead: never uploaded and cancelled means it never
+reached the server at all — no row to cancel, no stock to return, no money to
+account for. and `catchUp` now handles a `cancelled` target as one direct move
+rather than a walk, for the rarer case where the upload landed first.
+
+### if the rpc is missing
+
+`supabase.rpc` fails, the ticket is **still cancelled**, and the board says:
+
+> the order was cancelled, but the stock did not go back. fix it in admin >
+> inventory.
+
+that is deliberate. the alternative — refusing the void because the stock call
+failed — leaves a ticket the kitchen keeps making.
+
+### how it was tested
+
+against a production build, with the rpc **not yet installed**, so the degraded
+path was exercised for real:
+
+- voided a cloud ticket → cancelled, off the board, warning shown, and the
+  server log said `Could not find the function public.return_stock_for_order`
+- took an offline cash sale (`turkish coffee`, 12 g coffee), voided it offline,
+  then brought the connection back: the local record was **dropped**, no new
+  ticket appeared, and stock went `1928 → 1916` — one deduct for the sale that
+  uploaded, none for the one that was voided. the trap would have made it 1904
+
+the function itself was run against a **real postgres**, not just read over.
+there is no docker on this machine and `.env.local` has only the anon key, but
+`@electric-sql/pglite` is postgres compiled to wasm and needs neither — build the
+five tables the function touches, run `supabase/phase4.sql` against them
+unmodified, and exercise it. all six checks pass:
+
+| check | result |
+| --- | --- |
+| cancelled + deducted | stock back, product **and** modifier lines |
+| the same call again | no-op, stock unmoved |
+| `stock_deducted` after | cleared |
+| a **live** order | refused, `order is not cancelled` |
+| cancelled, never deducted | no-op, `ok: true` |
+| an id that does not exist | `order not found` |
+
+worth keeping in the toolbox: pglite is the way to test sql from a machine that
+cannot reach the project. it is a real postgres, so plpgsql, enums and jsonb all
+behave — the only thing it cannot tell you is whether *their* database took it.
+
+which is the one thing still open. **after running `supabase/phase4.sql`**, note
+an ingredient, sell the product, void the ticket, and the number should return to
+where it started. the file ends with a `select` that prints the function it just
+created — if the result panel shows zero rows, the run did not reach the
+database and nothing else in this section will work.
 
 ---
 
@@ -715,11 +792,7 @@ will not take is not syncing, and the till says that part in words.
 
 ### known wrinkles (accepted, not bugs)
 
-- **the ticket number changes on upload.** the local id was made on the tablet;
-  supabase makes its own on insert. the kitchen sees `#6154a9b6` become
-  `#6ca03896`. the fix is to let `createOrder` accept the local order id — a
-  browser choosing a primary key, which is worth doing deliberately in phase 5,
-  not in passing here
+- ~~**the ticket number changes on upload.**~~ **fixed in step 8, below.**
 - a status move made **during the last round trip** can be lost, because the
   target is read just before the catch-up. it costs the kitchen one more tap on
   a ticket that is already safe in the cloud
@@ -746,6 +819,46 @@ a record pointing at a product that no longer exists was refused and kept, with
 already marked uploaded was not sent again — it only tried the catch-up, and
 the day's total did not move. no console errors on either tab, no server
 errors.
+
+### the ticket number now survives the upload (step 8)
+
+the wrinkle above was real on the floor, not cosmetic. the kitchen calls the
+number out, the cashier writes it on a cup, and then the internet comes back and
+the board silently renumbers the ticket everyone is already working from.
+
+`createOrder` now takes an **optional** `orderId`:
+
+- the till leaves it out and postgres chooses, exactly as before
+- `pushOne` sends `record.order.id` — the id the tablet made when the sale was
+  rung up, so the row goes into supabase under the number already on the screen
+
+that means the browser picks a primary key, which deserves the suspicion it
+usually gets. why it is safe here:
+
+- it is **validated against a uuid pattern** (`isValidOrderId`,
+  `src/lib/pos/order-id.ts`) before it goes near the insert. that guard lives
+  outside the server action on purpose: a `"use server"` file can only export
+  async functions, so a check left inline there could never be unit tested
+- it is an `insert`, so a chosen id can only ever *fail* on a collision, never
+  overwrite an existing order
+- it decides nothing. every price is still re-read from the db, the role is
+  still checked, `created_by` is still stamped by the server. an id is the one
+  field where the tablet's answer is as good as the server's
+- the retry path is unchanged and got slightly better: a re-sent sale now
+  collides on `id` **and** `client_id`, and the existing `client_id` lookup
+  returns the same order it always did — but now with an id that matches the
+  local one
+
+`mergeBoard` was the thing to check before doing this, and it was already right:
+it dedupes local against cloud on **`client_id`**, not on `id`, so the local and
+cloud copies of one sale never both draw during the handover.
+
+how it was tested: production build on `:3001`, two tabs, both offline. rang up
+a `turkish coffee` on the till — stored locally as `b1cec0bb-…`, and the kitchen
+board showed **`#b1cec0bb`**. brought the connection back, the worker uploaded
+and the local record was dropped. then a **full reload** of `/kds` with **zero
+local records left**, so the board could only be reading supabase: still
+`#b1cec0bb`, takeaway, 1× turkish coffee. no console errors.
 
 ---
 
@@ -886,6 +999,9 @@ online, exactly what phases 2 and 3 did. with no internet:
 | opening with no internet | `public/sw.js`, `src/app/manifest.ts`, `src/components/service-worker.tsx` |
 | who is on shift | `src/lib/auth/shift.ts`, `src/components/shift-keeper.tsx`, `src/lib/auth/roles.ts` |
 | the screens | `src/app/pos/pos-screen.tsx`, `src/app/kds/kds-screen.tsx`, `src/app/login/page.tsx` |
+| looking a sale up again | `src/app/pos/components/order-history.tsx` |
+| what a receipt says | `src/lib/pos/receipt.ts`, `src/app/pos/components/receipt-view.tsx` |
+| correcting a sale | `src/lib/pos/edit-order.ts`, `replaceOrder` in `src/app/pos/actions.ts` |
 | every write | `src/app/pos/actions.ts`, `src/app/kds/actions.ts` |
 
 ### running it
@@ -906,7 +1022,8 @@ npm run start -- -p 3001
 ```
 
 you also need `.env.local` from the owner (supabase url + anon key). never
-commit it.
+commit it. and `supabase/phase4.sql` has to have been run on the project — one
+function, and voiding a ticket does not give the stock back without it (§12).
 
 ### testing offline without unplugging anything
 
@@ -946,22 +1063,369 @@ things that will waste your time if you do not know them:
 - the shift note is **not** a credential and must never become one — no token,
   no password on the device (§19)
 
+### the state of the branches
+
+**nothing is merged yet.** phase 4 is five pull requests stacked on top of each
+other, each one based on the previous branch rather than on `main`, because each
+step needed the one before it. github shows a small diff for each as long as
+they are merged **bottom up**:
+
+| pr | branch | what it is |
+|----|--------|-----------|
+| #12 | `phase-4-void-returns-stock` → `main` | voiding a ticket gives the ingredients back (§12) |
+| #13 | `phase-4-stable-ticket-number` → #12 | a sale keeps its ticket number when it uploads (§18) |
+| #14 | `phase-4-tests` → #13 | the test suite (§21) |
+| #15 | `phase-4-order-history` → #14 | today's orders + reprintable receipts (§22) |
+| #16 | `phase-4-edit-order` → #15 | editing a sale (§23) |
+
+merge #12 first, then #13, and so on. merging out of order will make the later
+ones look like they contain the earlier ones' changes.
+
+**#12 should not be merged until `supabase/phase4.sql` has actually been run** —
+the code and the database change together, and merging the code first means
+every void between then and the sql silently loses stock.
+
 ### what is left
 
 in the order i would do it:
 
-1. **phase 5: deploy to vercel.** everything above only reaches a real tablet
-   over https — service workers do not run on a plain `http://192.168.x.x` box.
-   this is the step that makes the offline work usable on the truck
-2. **a dry run on the actual tablet**, on truck wifi. all of phase 4 was
-   verified in a desktop browser against a production build
-3. **stock is not returned on a late cancel** (§12). the sql for it is sketched
-   there and belongs in `supabase/phase4.sql`
-4. **the ticket number changes on upload** (§18). the fix is letting
-   `createOrder` accept the local order id — a browser choosing a primary key,
-   worth doing deliberately
-5. thermal printing (esc/pos), and the reprint stub from §3
-6. touch qa on the real device: button sizes on the till and the board
-7. there are **no automated tests** in this repo. everything so far was checked
-   by running it. if you add a test setup, start with `src/lib/pos/money.ts` and
-   `src/lib/pos/cart.ts` — pure functions, and they decide what customers pay
+1. **run `supabase/phase4.sql`** on the project. one function. it is what makes
+   a void — and now an edit (§23) — give the ingredients back. paste the whole
+   file with **nothing selected**, because the supabase editor runs only the
+   selection if there is one, and check the result panel shows **one row** at
+   the end. if it shows zero the function was not created, whatever the editor
+   said. until this is done, every edit prints its receipt next to `the old
+   ticket was cancelled, but its ingredients did not go back` — that is the
+   feature being honest, not a bug
+2. **fix the stock that is already wrong.** every ticket voided before the
+   function existed still has its ingredients deducted. known ones: `#76b93f62`
+   and `#50a45528` (12 g coffee each), `#a811686d` (250 ml juice base), and
+   `#6eef6a69`, which the §23 edit voided during testing. once the function is
+   in, this catches all of them whatever the list has grown to:
+   ```sql
+   select id, public.return_stock_for_order(id)
+   from public.orders
+   where status = 'cancelled' and stock_deducted;
+   ```
+   write down `/admin/inventory` before and after. coffee was **1916 g** and
+   juice base **4500 ml** when this was measured; the two coffee tickets alone
+   should put coffee at **1940 g** and juice base at **4750 ml**, plus whatever
+   the croissant ticket gives back
+3. **merge the stack**, bottom up, per the table above
+4. **phase 5: deploy to vercel.** everything in phase 4 only reaches a real
+   tablet over https — service workers do not run on a plain `http://192.168.x.x`
+   box. this is the step that makes the offline work usable on the truck
+5. **a dry run on the actual tablet**, on truck wifi. all of phase 4 was
+   verified in a desktop browser against a production build, never on the device
+   it is for
+6. **thermal printing (esc/pos).** today the receipt goes to `window.print()` and
+   the browser's dialog. the paper is `#receipt-paper` and `globals.css` sizes it
+   to 72mm; a driver replaces the `print` button and nothing else, because
+   `buildReceipt()` already returns the right shape (§22)
+7. **touch qa on the real device** — button sizes on the till and the board
+
+### known gaps, deliberately not built
+
+these are not bugs. they were decided against, or ran out of scope. if you pick
+one up, this is what you need to know:
+
+- **a normal sale does not print.** the receipt prints after an **edit**, and
+  when you open a sale from the history. after an ordinary checkout it does not.
+  that is roughly two lines in `pos-screen.tsx` — call `buildReceipt()` on the
+  re-read order the same way the edit path already does
+- **`src/lib/data/sync.ts` has no tests.** it is the one important file the
+  suite does not reach, because it needs a fake `localStorage` and a fake cloud
+  source. this was started and put down when the order history came up. §21
+  lists it as the next test to write
+- **only today's sales are in the history.** the boundary is
+  `startOfTruckDayIso()` (§22). yesterday's ticket cannot be looked up or
+  reprinted. no search, no date picker
+- **an edit cannot be undone.** it voids and rings a new sale. undoing it means
+  editing the new ticket, which leaves both voids in the record — correct, but
+  the day's orders list gets long
+- **the history cannot show sales taken before the connection dropped.** offline
+  it lists what is on this tablet and says so. there is nothing on the device to
+  show for the rest, and that is a limit rather than a defect
+- **no component or integration tests.** 67 tests over pure functions only.
+  anything with a component or a supabase call is checked by running it, which
+  is why every section of this file ends with a "verified live" paragraph — keep
+  that habit
+
+---
+
+## 21) tests (built — step 9)
+
+`npm test` — vitest, about half a second. no watch mode in the script; run
+`npx vitest` if you want one.
+
+it was 46 tests when this section was written. steps 10 and 11 took it to **67
+across 6 files** — see §22 and §23 for the ones they added.
+
+there were none before this. everything in phases 1–4 was checked by running
+it, which is the right way to check a kitchen board and the wrong way to check
+arithmetic.
+
+### what is covered, and why those
+
+only **pure functions**. nothing here renders a component, and nothing here
+touches supabase — no mocks, no fixtures database, no setup file.
+
+| file | why it earns a test |
+| --- | --- |
+| `src/lib/pos/money.ts` | every price on every receipt goes through it |
+| `src/lib/pos/cart.ts` | decides what the customer is charged, and holds the double-charge guard |
+| `src/lib/kds/orders.ts` | the merge between the cloud board and the tablet's own sales |
+| `src/lib/pos/order-id.ts` | the one value the browser is allowed to choose |
+
+the money tests are written as receipts that would have been wrong: `10.10 +
+20.20` is `30.299999999999997` in plain javascript, and `8.10 × 3` is
+`24.299999999999997`. those two numbers are the whole reason the piastres
+module exists, so they are in there by name.
+
+`saleSignature` is tested for its **properties** rather than its output, because
+the string itself is not the contract: the same sale must produce the same id so
+a retry after a network wobble reuses one `client_id`, and any edit to what is
+being sold must produce a different one. one test documents behaviour rather
+than endorsing it — the signature is sensitive to the **order of the lines**,
+which is unreachable today because the cart never reorders itself, and would be
+a double-charge if it ever did.
+
+`mergeBoard` is tested hardest, because §18 leans on it: it dedupes local
+against cloud on **`client_id`**, not `id`, which is the only reason
+`createOrder` can safely accept the tablet's own id. there is a test for exactly
+that case — cloud and local sharing an id, still collapsing to one card.
+
+### the suite was checked against itself
+
+a suite that passes on correct code proves nothing on its own, so four
+regressions were introduced on purpose and reverted:
+
+| break | caught |
+| --- | --- |
+| `money.ts` stops rounding to whole piastres | ✅ 1 failed |
+| `mergeBoard` dedupes on `id` instead of `client_id` | ✅ 2 failed |
+| `cancelled` removed from `pending` in `ALLOWED_MOVES` | ✅ 1 failed |
+| `isValidOrderId` always returns true | ✅ 2 failed |
+
+the fourth one is why `order-id.ts` exists as its own module. the guard started
+inline in the server action, and `tsc` and `eslint` both stayed silent when it
+was deleted — a `"use server"` file can only export async functions, so it could
+not be reached from a test where it was.
+
+### what is deliberately not covered
+
+- anything that renders. that needs jsdom and a component setup, and the screens
+  have been exercised by hand every step of phase 4
+- the server actions and the data sources — they need supabase, and mocking it
+  would mostly test the mock
+- `sync.ts`. it is worth covering and it is the obvious next one, but it wants a
+  fake `localStorage` plus a fake cloud source, which is a real test harness
+  rather than an afternoon
+- the sql. that has its own answer in §12: `@electric-sql/pglite` runs a real
+  postgres with no docker and no project credentials
+
+## 22) order history + receipt (built — step 10)
+
+the till grew an **orders** button. it opens today's sales, newest first, and
+any one of them can be opened as a receipt and printed again.
+
+this is the first half of "edit an order from the history". the second half
+(§23) needs this list to exist first, and it is worth having on its own: a
+cashier being asked "can i have the receipt again" had no answer before this.
+
+### where the list comes from
+
+both stores at once, exactly like the kitchen board:
+
+```
+mergeBoard(cloud, local).reverse()
+```
+
+`mergeBoard` is the same function `/kds` uses, so the till and the kitchen can
+never disagree about which copy of a sale is the real one. it dedupes on
+`client_id`, which is why a sale that has just been uploaded shows **once** and
+not twice. `.reverse()` is there because the kitchen wants oldest first and a
+cashier looking something up wants the opposite.
+
+the boundary is `startOfTruckDayIso()` — the same truck-clock day the reports
+are cut on, so a 1am sale is still filed under last night rather than jumping
+to a new day mid-shift.
+
+### it shows cancelled orders on purpose
+
+`/admin/reports` filters cancelled out, because they are not takings. the
+history must not: "where did that ticket go" is exactly the question it is
+there to answer, and §23 makes cancelled orders something the cashier creates
+on purpose.
+
+### offline
+
+`loadRecentOrders` is the one read the **local** source can honestly answer.
+the sales taken on this tablet are right there in `localStorage`, so with no
+internet the panel still lists them, marks each one `on this tablet`, and
+prints its receipt. it cannot show sales taken before the connection dropped,
+which is a real limit and not a bug — there is nothing on the device to show.
+
+verified live: went offline, sold a butter croissant, and `#6eef6a69` appeared
+in the history with the `on this tablet` chip and printed correctly. after the
+connection came back the sync worker uploaded it, and it then appeared **once**,
+still `#6eef6a69` — which is §18's ticket-number guarantee holding up.
+
+### the receipt
+
+`src/lib/pos/receipt.ts` decides what a receipt says. it is a plain object, not
+jsx, because the same receipt is printed from three places: after a sale, from
+the history, and after an edit (§23).
+
+it re-prices nothing. `order_items.unit_price` is the price that was actually
+charged, snapshotted at checkout, so a menu edit next week cannot rewrite a
+receipt a customer is holding. where it does do arithmetic — quantity × unit
+price — it goes through the piastre helpers, for the reason in §12.
+
+`receipt.total` is read off the order row, not re-added from the lines. that is
+the number the customer paid and the number in the db. `receiptLinesTotal()`
+exists so a disagreement between the two can be spotted, and is never charged
+from.
+
+### printing
+
+there is no thermal printer yet. the paper carries `id="receipt-paper"` and
+`globals.css` has:
+
+```css
+@media print {
+  body * { visibility: hidden; }
+  #receipt-paper, #receipt-paper * { visibility: visible; }
+  #receipt-paper { position: absolute; top: 0; left: 0; width: 72mm; }
+}
+```
+
+`window.print()` then hands it to the browser's own dialog. 72mm is an 80mm
+roll minus the dialog's margin. an esc/pos driver later replaces the `print`
+button and nothing else — the receipt object is already the right shape for it.
+
+the print rules were checked in the **built** css, not just the source, because
+tailwind v4 processes `globals.css` and a rule that does not survive the build
+is a rule that does not exist.
+
+### tests
+
+`src/lib/pos/receipt.test.ts`, 11 of them. the ones that matter:
+
+- the order row wins over the lines when they disagree about the total
+- `receiptLineTotal(8.1, 3)` is `24.3`, where `8.1 * 3` is `24.299999999999997`
+- `formatTruckTime("2026-08-05T22:30:00Z")` prints `06/08/2026, 01:30` — cairo,
+  not utc, and the date rolls
+- postgrest sending `numeric` as a string does not put `"10.00"` on a receipt
+
+---
+
+## 23) editing a sale (built — step 11)
+
+the cashier rang the wrong thing. they open `orders`, hit `edit`, the sale
+comes back as a cart, they fix it, and they take payment again. the old ticket
+is voided and its ingredients go back.
+
+### what "delete the old order" actually means here
+
+the ask was to remove the old order from the database. it is not done that way,
+and that is deliberate.
+
+`supabase/schema.sql` has **no delete policy** on `orders` or `order_items`, so
+a delete would fail at the database anyway. more to the point, it should fail.
+a deleted row takes the day's takings, the stock that was pulled for it, and
+the record that the sale ever happened. the owner would be looking at a
+revenue figure that quietly does not match the drawer.
+
+so the old sale is **voided** — `status = 'cancelled'`. `/admin/reports` and
+the dashboard already filter cancelled orders out of every total, so from the
+owner's side it is gone. from the auditor's side it is still there, next to the
+ticket that replaced it. that is what a till is supposed to do.
+
+### the order of operations
+
+`replaceOrder` in `src/app/pos/actions.ts`. it creates the new sale **first**,
+then voids the old one:
+
+1. read the old order. if it is not `pending`/`preparing`/`ready`, refuse —
+   a completed sale means the customer already has the food, and a cancelled
+   one has had this done to it already.
+2. `createOrder(input)` — the full existing checkout path, so prices are read
+   from the db, stock is pulled, and the role check is the one that already
+   exists. an edit gets no shortcut around any of it.
+3. if that failed, stop. **the customer still has their original ticket.**
+4. void the old row, guarded by `.in("status", [...])` so a ticket the kitchen
+   finished in the last two seconds is not voided out from under them.
+5. `return_stock_for_order` on the old id.
+
+doing it the other way round — void, then create — means a failed create leaves
+the customer with nothing and the kitchen halfway through cooking a ticket that
+no longer exists. this ordering can produce a duplicate; that ordering can
+produce a hole. a duplicate is visible and fixable, a hole is neither.
+
+### when a step after the sale fails
+
+steps 4 and 5 return `ok: true` with a `warning`, never `ok: false`. the new
+sale is real and the money has been taken — calling that a failure would be a
+lie the cashier acts on. what the warning says instead:
+
+- void failed: `the new ticket is live, but #xxxx was finished before it could
+  be cancelled. void it on the kitchen screen.`
+- stock return failed: `the old ticket was cancelled, but its ingredients did
+  not go back. fix it in admin > inventory.`
+
+**that second one is what happens today**, because `supabase/phase4.sql` has
+not been run yet — see §12. verified live: the edit went through, the receipt
+printed, and that exact sentence appeared. the feature is correct; the database
+is missing the function.
+
+### the role check
+
+`moveOrderStatus` in `src/app/kds/actions.ts` gates on `kitchen`/`admin`, so a
+cashier cannot use it. `replaceOrder` therefore does its own void with a
+`cashier`/`admin` gate, which is the scope the owner picked. that is a second
+copy of a role check, and it is on purpose — reusing the kitchen action would
+have meant widening it, and then a cashier could move any ticket to any status.
+
+### rebuilding the cart
+
+`src/lib/pos/edit-order.ts`, kept out of the `"use server"` file so it can be
+tested. `order_items` stores `unit_price` **with the extras already in it**,
+and the cart stores a base price plus modifiers, so `basePriceOf()` subtracts
+the extras back out. that subtraction goes through the piastre helpers: on real
+prices `20.05 - 12.25` is `7.800000000000001`, and there is a test pinning it.
+
+`cartLinesFromOrder` returns `null` if any line's `product_id` is gone. a
+deleted product cannot be re-priced, and guessing is how a customer gets
+charged the wrong amount.
+
+### what the cashier sees
+
+- a blue banner: `editing ticket #xxxx. it stays live until you confirm, then
+  it is cancelled and its ingredients go back.` — the old ticket really does
+  stay on the kitchen board until the new sale lands, so it says so.
+- `leave it alone` backs out and changes nothing.
+- `edit` only renders on kitchen-status tickets, and is disabled when offline
+  (`an edit needs the internet`) or when the sale is still only on this tablet
+  (`this sale has not been uploaded yet`) — there is no server row to void.
+- the local source's `replaceOrder` refuses outright: `no internet. cancel the
+  old ticket on the kitchen screen and ring the new one.`
+- afterwards the receipt prints with a `replaces #xxxx (cancelled)` row, so the
+  paper says which sale it stands in for.
+
+### verified live
+
+`#6eef6a69` (25.00, butter croissant) → edit → added a turkish coffee → pay:
+
+- new ticket `#6e4c3844`, 45.00, receipt reading `replaces #6eef6a69
+  (cancelled)`
+- `#6eef6a69` now `cancelled` in the history, with its `edit` button gone
+- `/kds` showing `#6e4c3844` with 2 items and no `#6eef6a69`
+- the stock warning above, as expected
+
+### tests
+
+`src/lib/pos/edit-order.test.ts`, 10 of them. the round trip is the one that
+matters: an order line rebuilt into a cart and re-priced comes back to the same
+unit price it was sold at. if that ever breaks, an edit silently changes what
+the customer pays.
