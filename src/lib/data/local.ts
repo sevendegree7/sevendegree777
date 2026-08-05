@@ -7,6 +7,7 @@ import {
 } from "@/lib/pos/box";
 import { cartTotal, lineUnitPrice, type PricedLine } from "@/lib/pos/cart";
 import { modifierAppliesToProduct } from "@/lib/pos/modifiers";
+import { newOrderId } from "@/lib/pos/order-id";
 import type {
   BoxContent,
   OrderItem,
@@ -85,14 +86,9 @@ export function createLocalSource(): DataSource {
         }
       }
 
-      // the ui blocks these already. this is the second lock: a card sale
-      // saved on the tablet is a sale nobody ever collected the money for.
-      if (input.paymentMethod !== "cash") {
-        return {
-          ok: false,
-          message: `${input.paymentMethod} needs internet. take cash instead.`,
-        };
-      }
+      // card and instapay are settled on their own device next to the till,
+      // not through this app, so an offline sale can still record either one.
+      // the method is stored as chosen and uploaded with the rest of the sale.
 
       const menu = readCachedMenu();
 
@@ -215,12 +211,12 @@ export function createLocalSource(): DataSource {
       }
 
       const total = cartTotal(pricedLines);
-      const orderId = crypto.randomUUID();
+      const orderId = newOrderId();
       const takenAt = new Date().toISOString();
       const ticket = nextLocalTicketNumber(new Date(takenAt));
 
       const items: OrderItem[] = pricedLines.map((line) => ({
-        id: crypto.randomUUID(),
+        id: newOrderId(),
         order_id: orderId,
         product_id: line.productId,
         // snapshot the name, same as the server does, so a later menu edit

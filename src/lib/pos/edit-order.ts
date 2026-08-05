@@ -2,6 +2,7 @@ import type { KitchenOrder } from "@/lib/kds/orders";
 
 import type { CartLine } from "./cart";
 import { toPiastres, toPounds } from "./money";
+import { newOrderId } from "./order-id";
 
 // turning a sale that was already rung up back into a cashier's cart, so it
 // can be corrected and rung up again.
@@ -39,7 +40,7 @@ export function cartLinesFromOrder(order: KitchenOrder): CartLine[] | null {
     }
 
     lines.push({
-      lineId: crypto.randomUUID(),
+      lineId: newOrderId(),
       productId: item.product_id,
       productName: item.product_name,
       basePrice: basePriceOf(Number(item.unit_price), item.selected_modifiers),

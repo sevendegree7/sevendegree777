@@ -24,8 +24,8 @@ const en = {
   "login.openAs":
     "This tablet is open as {name} ({role}). Carry on without signing in again.",
   "login.continueAs": "Continue as {name}",
-  "login.cashOnlyNote":
-    "Cash only, and every sale is kept on the tablet until the internet is back.",
+  "login.offlineSalesNote":
+    "Cash, card and InstaPay all work. Every sale is kept on the tablet until the internet is back.",
   "login.lastChecked": "Shift last checked with the server {time}",
   "login.needsInternet":
     "Signing in needs the internet, and this tablet has no shift on it. Connect once and sign in. After that it opens on its own, internet or not.",
@@ -51,7 +51,7 @@ const en = {
   "connection.checkAgain": "Check again",
 
   "pos.orders": "Orders",
-  "pos.cashOnly": "Cash only. Every sale is saved on this tablet.",
+  "pos.offlineSaved": "Offline. Every sale is saved on this tablet.",
   "pos.oneSaleWaiting": "1 sale on this tablet waiting to upload",
   "pos.salesWaiting": "{count} sales on this tablet waiting to upload",
   "pos.uploadNow": "Upload now",
@@ -86,8 +86,6 @@ const en = {
   "cart.total": "Total",
   "cart.pay": "Pay",
   "cart.sending": "Sending...",
-  "cart.paymentNeedsInternet":
-    "{method} needs internet. Take cash, or wait for the connection.",
 
   "orderType.label": "Order type",
   "orderType.takeaway": "Takeaway",
@@ -98,7 +96,6 @@ const en = {
   "payment.cash": "Cash",
   "payment.card": "Card",
   "payment.instapay": "InstaPay",
-  "payment.needsInternet": "Needs internet",
 
   "confirm.title": "Confirm payment",
   "confirm.items": "Items",
@@ -226,8 +223,8 @@ const ar: Record<TranslationKey, string> = {
   "login.openAs":
     "هذا الجهاز مفتوح باسم {name} ({role}). تابع العمل بدون تسجيل دخول جديد.",
   "login.continueAs": "تابع باسم {name}",
-  "login.cashOnlyNote":
-    "كاش فقط، وكل عملية بيع محفوظة على الجهاز حتى يعود الإنترنت.",
+  "login.offlineSalesNote":
+    "الكاش والبطاقة وانستاباي كلها تعمل. كل عملية بيع محفوظة على الجهاز حتى يعود الإنترنت.",
   "login.lastChecked": "آخر تأكيد للوردية مع الخادم {time}",
   "login.needsInternet":
     "تسجيل الدخول يحتاج إنترنت، ولا توجد وردية محفوظة على هذا الجهاز. اتصل مرة واحدة وسجّل الدخول. بعدها يفتح وحده، بإنترنت أو بدونه.",
@@ -254,7 +251,7 @@ const ar: Record<TranslationKey, string> = {
   "connection.checkAgain": "افحص مرة أخرى",
 
   "pos.orders": "الطلبات",
-  "pos.cashOnly": "كاش فقط. كل عملية بيع محفوظة على هذا الجهاز.",
+  "pos.offlineSaved": "غير متصل. كل عملية بيع محفوظة على هذا الجهاز.",
   "pos.oneSaleWaiting": "عملية بيع واحدة على هذا الجهاز في انتظار الرفع",
   "pos.salesWaiting": "{count} عمليات بيع على هذا الجهاز في انتظار الرفع",
   "pos.uploadNow": "ارفع الآن",
@@ -289,8 +286,6 @@ const ar: Record<TranslationKey, string> = {
   "cart.total": "الإجمالي",
   "cart.pay": "ادفع",
   "cart.sending": "جاري الإرسال...",
-  "cart.paymentNeedsInternet":
-    "{method} يحتاج إنترنت. خذ كاش أو انتظر عودة الاتصال.",
 
   "orderType.label": "نوع الطلب",
   "orderType.takeaway": "تيك أواي",
@@ -301,7 +296,6 @@ const ar: Record<TranslationKey, string> = {
   "payment.cash": "كاش",
   "payment.card": "بطاقة",
   "payment.instapay": "انستاباي",
-  "payment.needsInternet": "يحتاج إنترنت",
 
   "confirm.title": "تأكيد الدفع",
   "confirm.items": "الأصناف",

@@ -139,7 +139,7 @@ export default function LoginPage() {
                 </button>
 
                 <p className="mt-4 text-sm text-muted">
-                  {t("login.cashOnlyNote")}
+                  {t("login.offlineSalesNote")}
                 </p>
                 <p className="mt-2 text-xs text-muted">
                   {t("login.lastChecked", {

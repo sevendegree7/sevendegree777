@@ -5,7 +5,7 @@
 // wifi after every deploy, and it will open anywhere after that.
 //
 // bump VERSION when you change this file or want to drop every old copy.
-const VERSION = "v3";
+const VERSION = "v4";
 const CACHE = `seven-degree-${VERSION}`;
 
 // pages worth keeping a copy of. the rest of the app needs the server anyway.

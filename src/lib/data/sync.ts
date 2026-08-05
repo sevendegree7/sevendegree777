@@ -179,7 +179,7 @@ async function pushOne(record: LocalOrder, clientId: string): Promise<boolean> {
       ticketNumber: record.order.ticket_number,
       kdsEnabled: record.order.status !== "completed",
       orderType: record.order.order_type,
-      // the local source only ever takes cash, but send what was stored
+      // whatever the cashier picked offline, including card and instapay
       paymentMethod: record.order.payment_method ?? "cash",
       notes: record.order.notes,
       lines,

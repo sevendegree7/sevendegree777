@@ -1,17 +1,20 @@
 import Image from "next/image";
 
-// real 7° artwork from the brand deck. files live under /brand and in the
-// app icons — keep them small so the tablet does not drag a 2mb png around.
-
-const SIZES = {
-  sm: { width: 44, height: 29 },
-  md: { width: 56, height: 37 },
-  lg: { width: 80, height: 53 },
-  xl: { width: 112, height: 75 },
-  hero: { width: 160, height: 107 },
+// the 7° mark from the brand deck, cropped to the artwork and shipped as a
+// small webp so the tablet is not dragging a print-size png around.
+//
+// the art is transparent: navy engraving on cream, white hatching on navy, so
+// one file covers both themes. sizes are heights, since the mark sits on a
+// line of text in the header and needs to match it rather than a box.
+const HEIGHTS = {
+  sm: "h-7",
+  md: "h-9",
+  lg: "h-12",
+  xl: "h-16",
+  hero: "h-24",
 } as const;
 
-export type BrandMarkSize = keyof typeof SIZES;
+export type BrandMarkSize = keyof typeof HEIGHTS;
 
 export function BrandMark({
   className = "",
@@ -20,18 +23,17 @@ export function BrandMark({
   className?: string;
   size?: BrandMarkSize;
 }) {
-  const dims = SIZES[size];
-
   return (
     <Image
       src="/brand/logo.webp"
       alt="Seven Degrees"
-      width={dims.width}
-      height={dims.height}
-      priority={size === "hero" || size === "xl"}
-      className={`block h-auto w-auto select-none ${className}`}
-      // plain static file so the service worker can keep it offline
+      width={193}
+      height={222}
+      // it sits in the header of every screen, so it is always above the fold
+      priority
+      // plain static file, so the service worker can keep it for offline
       unoptimized
+      className={`w-auto select-none ${HEIGHTS[size]} ${className}`}
     />
   );
 }

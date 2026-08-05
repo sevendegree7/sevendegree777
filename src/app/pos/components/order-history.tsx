@@ -21,6 +21,7 @@ import {
 import { formatMoney } from "@/lib/pos/money";
 import { buildReceipt, formatTruckTime } from "@/lib/pos/receipt";
 import { startOfTruckDayIso } from "@/lib/reports/dates";
+import { useScrollLock } from "@/lib/ui/use-scroll-lock";
 import type { OrderStatus } from "@/types/database.types";
 
 import { ReceiptView } from "./receipt-view";
@@ -61,6 +62,8 @@ export function OrderHistory({ onClose, onEdit, offline }: OrderHistoryProps) {
 
   const localOrders = useLocalOrders();
   const { t } = useTranslate();
+
+  useScrollLock();
 
   // one boundary per open, not per render: a value that moves on every render
   // would restart the read forever
@@ -110,8 +113,8 @@ export function OrderHistory({ onClose, onEdit, offline }: OrderHistoryProps) {
   }, []);
 
   return (
-    <div className="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto bg-navy/60 p-4">
-      <div className="my-auto w-full max-w-2xl rounded-2xl border border-line bg-raised p-5 shadow-xl">
+    <div className="fixed inset-0 z-40 flex items-center justify-center bg-navy/60 p-4">
+      <div className="flex max-h-[85dvh] w-full max-w-2xl flex-col overflow-y-auto overscroll-contain rounded-2xl border border-line bg-raised p-5 shadow-xl">
         <div className="flex items-center justify-between gap-3">
           <h2 className="font-display text-lg font-semibold">
             {t("history.title")}

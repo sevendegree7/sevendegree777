@@ -14,10 +14,6 @@ type CartPanelProps = {
   paymentMethod: PaymentMethod;
   orderNotes: string;
   submitting: boolean;
-  // no internet: card and instapay cannot be taken
-  offline: boolean;
-  // offline and the cashier still has card or instapay selected
-  paymentBlocked: boolean;
   onChangeQuantity: (lineId: string, quantity: number) => void;
   onRemove: (lineId: string) => void;
   onClear: () => void;
@@ -34,8 +30,6 @@ export function CartPanel({
   paymentMethod,
   orderNotes,
   submitting,
-  offline,
-  paymentBlocked,
   onChangeQuantity,
   onRemove,
   onClear,
@@ -145,11 +139,7 @@ export function CartPanel({
       )}
 
       <OrderTypeSelect value={orderType} onChange={onOrderTypeChange} />
-      <PaymentSelect
-        value={paymentMethod}
-        offline={offline}
-        onChange={onPaymentMethodChange}
-      />
+      <PaymentSelect value={paymentMethod} onChange={onPaymentMethodChange} />
 
       <label className="block text-sm text-muted">
         {t("cart.orderNote")}
@@ -169,18 +159,10 @@ export function CartPanel({
         </span>
       </div>
 
-      {paymentBlocked ? (
-        <p className="rounded-xl bg-danger/15 px-4 py-3 text-sm text-danger">
-          {t("cart.paymentNeedsInternet", {
-            method: t(`payment.${paymentMethod}`),
-          })}
-        </p>
-      ) : null}
-
       <button
         type="button"
         onClick={onCheckout}
-        disabled={lines.length === 0 || submitting || paymentBlocked}
+        disabled={lines.length === 0 || submitting}
         className="w-full rounded-xl bg-navy px-4 py-4 text-lg font-semibold text-cream transition-opacity disabled:opacity-40 dark:bg-accent-surface dark:text-accent-ink"
       >
         {submitting ? t("cart.sending") : t("cart.pay")}

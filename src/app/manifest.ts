@@ -12,8 +12,10 @@ export default function manifest(): MetadataRoute.Manifest {
     start_url: "/pos",
     scope: "/",
     display: "standalone",
-    background_color: "#f5f5f4",
-    theme_color: "#292524",
+    // cream and navy from the brand book, matching the themeColor in the root
+    // layout so the splash screen is not a different app to the first paint
+    background_color: "#fbf8ef",
+    theme_color: "#0e1b2c",
     icons: [
       {
         src: "/icon-192.png",

@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { isValidOrderId } from "./order-id";
+import { isValidOrderId, newOrderId } from "./order-id";
 
 // this guard sits in front of an insert where the browser chooses the primary
 // key, so the interesting cases are the malformed ones.
@@ -45,5 +45,57 @@ describe("isValidOrderId", () => {
     expect(
       isValidOrderId("\nb1cec0bb-3f10-4d85-b954-c051c2d6fce5"),
     ).toBe(false);
+  });
+});
+
+// the till is opened over plain http on the truck's own network, where
+// randomUUID is not defined at all. every branch has to produce an id the
+// guard above accepts, or the cashier cannot ring anything up.
+describe("newOrderId", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("produces valid ids from randomUUID", () => {
+    for (let i = 0; i < 50; i += 1) {
+      expect(isValidOrderId(newOrderId())).toBe(true);
+    }
+  });
+
+  it("produces valid ids when only getRandomValues exists", () => {
+    vi.stubGlobal("crypto", {
+      getRandomValues: (bytes: Uint8Array) => {
+        for (let i = 0; i < bytes.length; i += 1) {
+          bytes[i] = i * 11;
+        }
+        return bytes;
+      },
+    });
+
+    const ids = new Set<string>();
+
+    for (let i = 0; i < 50; i += 1) {
+      const id = newOrderId();
+      expect(isValidOrderId(id)).toBe(true);
+      ids.add(id);
+    }
+
+    // version 4 and variant bits are forced even when the bytes are not random
+    expect([...ids][0]?.[14]).toBe("4");
+    expect("89ab").toContain([...ids][0]?.[19]);
+  });
+
+  it("produces valid unique ids with no crypto at all", () => {
+    vi.stubGlobal("crypto", undefined);
+
+    const ids = new Set<string>();
+
+    for (let i = 0; i < 200; i += 1) {
+      const id = newOrderId();
+      expect(isValidOrderId(id)).toBe(true);
+      ids.add(id);
+    }
+
+    expect(ids.size).toBe(200);
   });
 });

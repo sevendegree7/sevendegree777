@@ -123,7 +123,10 @@ export function AccountMenu({ fallbackName, roleLabel }: AccountMenuProps) {
       {open ? (
         <div
           role="menu"
-          className="absolute end-0 z-50 mt-2 w-64 overflow-hidden rounded-2xl border border-line bg-raised shadow-xl"
+          // the panel scrolls itself on a short tablet screen. overscroll
+          // containment is what stops the drag turning into a page scroll
+          // behind the menu once it hits the end.
+          className="absolute end-0 z-50 mt-2 max-h-[calc(100dvh-6rem)] w-64 overflow-y-auto overscroll-contain rounded-2xl border border-line bg-raised shadow-xl"
         >
           <div className="border-b border-line px-4 py-3">
             <p className="font-mono text-[0.65rem] uppercase tracking-[0.12em] text-muted">

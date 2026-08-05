@@ -2,6 +2,7 @@
 
 import { useTranslate } from "@/lib/i18n/use-language";
 import { formatMoney } from "@/lib/pos/money";
+import { useScrollLock } from "@/lib/ui/use-scroll-lock";
 import type { OrderType, PaymentMethod } from "@/types/database.types";
 
 type ConfirmDialogProps = {
@@ -25,6 +26,8 @@ export function ConfirmDialog({
   onConfirm,
 }: ConfirmDialogProps) {
   const { t } = useTranslate();
+
+  useScrollLock();
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-navy/60 p-4">

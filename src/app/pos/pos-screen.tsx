@@ -23,6 +23,7 @@ import {
 } from "@/lib/pos/cart";
 import { cartLinesFromOrder } from "@/lib/pos/edit-order";
 import { formatMoney } from "@/lib/pos/money";
+import { newOrderId } from "@/lib/pos/order-id";
 import {
   boxContentsSignature,
   isBoxProduct,
@@ -106,7 +107,7 @@ export function PosScreen({
   const [receipt, setReceipt] = useState<Receipt | null>(null);
   // new seed after every sale that lands, so two identical carts in a row are
   // two orders. it survives a failed attempt, which is what makes a retry safe.
-  const [saleSeed, setSaleSeed] = useState(() => crypto.randomUUID());
+  const [saleSeed, setSaleSeed] = useState(() => newOrderId());
   const [feedback, setFeedback] = useState<Feedback>(null);
   const [submitting, startSubmit] = useTransition();
 
@@ -117,9 +118,6 @@ export function PosScreen({
   const uploadError = useUploadError();
   const connection = useConnection();
   const offline = connection === "offline";
-  // card and instapay need the terminal / the app on the phone, both online
-  const paymentBlocked =
-    offline && (paymentMethod === "card" || paymentMethod === "instapay");
 
   useEffect(() => {
     if (initialTicketDate) {
@@ -303,7 +301,7 @@ export function PosScreen({
       return [
         ...current,
         {
-          lineId: crypto.randomUUID(),
+          lineId: newOrderId(),
           productId: product.id,
           productName: product.name,
           basePrice: Number(product.base_price),
@@ -365,7 +363,7 @@ export function PosScreen({
     setEditing({ orderId: order.id, ticket: ticketNumber(order) });
     // a fresh seed: this is a different sale from the one being replaced, and
     // must not share a checkout id with it
-    setSaleSeed(crypto.randomUUID());
+    setSaleSeed(newOrderId());
     setHistoryOpen(false);
     setFeedback(null);
   }
@@ -378,7 +376,7 @@ export function PosScreen({
   }
 
   function openConfirm() {
-    if (cart.length === 0 || paymentBlocked) {
+    if (cart.length === 0) {
       return;
     }
 
@@ -440,7 +438,7 @@ export function PosScreen({
         setOrderNotes("");
         setConfirmOpen(false);
         setEditing(null);
-        setSaleSeed(crypto.randomUUID());
+        setSaleSeed(newOrderId());
         primeTicketCounter(result.ticketDate, result.ticketNumber);
         setFeedback(
           warning
@@ -498,7 +496,7 @@ export function PosScreen({
             {t("pos.orders")}
           </button>
           {offline ? (
-            <span className="text-sm text-muted">{t("pos.cashOnly")}</span>
+            <span className="text-sm text-muted">{t("pos.offlineSaved")}</span>
           ) : null}
           {waitingSales > 0 ? (
             <span className="rounded-full bg-warn/15 px-3 py-1 text-sm text-warn">
@@ -619,8 +617,6 @@ export function PosScreen({
           paymentMethod={paymentMethod}
           orderNotes={orderNotes}
           submitting={submitting}
-          offline={offline}
-          paymentBlocked={paymentBlocked}
           onChangeQuantity={changeQuantity}
           onRemove={(lineId) =>
             setCart((current) =>

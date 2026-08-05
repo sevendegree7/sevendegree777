@@ -105,6 +105,12 @@ export default function RootLayout({
       className={`${fraunces.variable} ${cormorant.variable} ${plexSans.variable} ${plexArabic.variable} ${plexMono.variable} h-full antialiased`}
     >
       <head>
+        {/* stays a plain tag in the head on purpose. next/script with
+            beforeInteractive puts this at the top of the body instead, and the
+            theme has to be decided before the first paint or the till flashes
+            cream then snaps to navy. react only warns about a script it
+            re-renders on the client, which happens when something else has
+            already crashed hydration. */}
         <script dangerouslySetInnerHTML={{ __html: PREFERENCES_BOOT_SCRIPT }} />
       </head>
       <body className="min-h-full flex flex-col bg-surface text-ink">

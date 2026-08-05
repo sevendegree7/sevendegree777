@@ -67,7 +67,8 @@ export function PreferencesMenu() {
       {open ? (
         <div
           role="menu"
-          className="absolute end-0 z-50 mt-2 w-64 overflow-hidden rounded-2xl border border-line bg-raised shadow-xl"
+          // same as the account menu: scroll inside the panel, never behind it
+          className="absolute end-0 z-50 mt-2 max-h-[calc(100dvh-6rem)] w-64 overflow-y-auto overscroll-contain rounded-2xl border border-line bg-raised shadow-xl"
         >
           <PreferencePanel showLanguage />
         </div>
