@@ -1,16 +1,30 @@
+import Link from "next/link";
+
 import { AdminShell } from "@/components/admin-shell";
 import { formatMoney } from "@/lib/pos/money";
-import { startOfTruckDayIso, truckDayKey } from "@/lib/reports/dates";
+import {
+  buildReportSummary,
+  periodDays,
+} from "@/lib/reports/analytics";
+import { startOfTruckDayIso } from "@/lib/reports/dates";
 import { createClient } from "@/lib/supabase/server";
+
+import { HourBars, HorizontalBars, VerticalBars } from "./charts";
 
 export default async function AdminReportsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ cashier?: string }>;
+  searchParams: Promise<{ cashier?: string; period?: string }>;
 }) {
+  const params = await searchParams;
+  const selectedCashier = params.cashier ?? "";
+  const period = ["today", "7", "30", "90"].includes(params.period ?? "")
+    ? (params.period as string)
+    : "30";
+  const daysAgo = periodDays(period);
+  const since = startOfTruckDayIso(daysAgo);
+
   const supabase = await createClient();
-  const since = startOfTruckDayIso(30);
-  const selectedCashier = (await searchParams).cashier ?? "";
 
   let ordersQuery = supabase
     .from("orders")
@@ -21,12 +35,24 @@ export default async function AdminReportsPage({
     .neq("status", "cancelled")
     .order("created_at", { ascending: false });
 
+  let cancelledQuery = supabase
+    .from("orders")
+    .select("id", { count: "exact", head: true })
+    .gte("created_at", since)
+    .eq("status", "cancelled");
+
   if (selectedCashier) {
     ordersQuery = ordersQuery.eq("created_by", selectedCashier);
+    cancelledQuery = cancelledQuery.eq("created_by", selectedCashier);
   }
 
-  const [{ data: orders, error }, { data: cashiers }] = await Promise.all([
+  const [
+    { data: orders, error },
+    { count: cancelledCount },
+    { data: cashiers },
+  ] = await Promise.all([
     ordersQuery,
+    cancelledQuery,
     supabase
       .from("profiles")
       .select("id, name, is_active")
@@ -35,70 +61,84 @@ export default async function AdminReportsPage({
   ]);
 
   const list = orders ?? [];
+  const orderIds = list.map((order) => order.id);
 
-  const total = list.reduce((sum, order) => sum + Number(order.total_amount), 0);
+  const { data: lines } =
+    orderIds.length > 0
+      ? await supabase
+          .from("order_items")
+          .select("product_name, quantity, unit_price, order_id")
+          .in("order_id", orderIds)
+      : { data: [] };
 
-  const byPayment: Record<string, number> = {};
-  const byType: Record<string, number> = {};
-  const byDay: Record<string, number> = {};
-
-  for (const order of list) {
-    const pay = order.payment_method ?? "unknown";
-    const type = order.order_type;
-    // by the clock on the truck, so a 1am sale is not filed under yesterday
-    const day = truckDayKey(order.created_at);
-
-    byPayment[pay] = (byPayment[pay] ?? 0) + Number(order.total_amount);
-    byType[type] = (byType[type] ?? 0) + Number(order.total_amount);
-    byDay[day] = (byDay[day] ?? 0) + Number(order.total_amount);
+  const cashierNames: Record<string, string> = {};
+  for (const cashier of cashiers ?? []) {
+    cashierNames[cashier.id] = cashier.name;
   }
 
-  // top items from recent order lines
-  const orderIds = list.slice(0, 200).map((order) => order.id);
-  const itemCounts: Record<string, { name: string; qty: number; revenue: number }> =
-    {};
+  const summary = buildReportSummary({
+    orders: list,
+    cancelledCount: cancelledCount ?? 0,
+    lines: lines ?? [],
+    cashierNames,
+  });
 
-  if (orderIds.length > 0) {
-    const { data: lines } = await supabase
-      .from("order_items")
-      .select("product_name, quantity, unit_price, order_id")
-      .in("order_id", orderIds);
+  const periodLabel =
+    period === "today"
+      ? "Today"
+      : period === "7"
+        ? "Last 7 days"
+        : period === "90"
+          ? "Last 90 days"
+          : "Last 30 days";
 
-    for (const line of lines ?? []) {
-      const key = line.product_name;
-      const current = itemCounts[key] ?? {
-        name: line.product_name,
-        qty: 0,
-        revenue: 0,
-      };
-      current.qty += line.quantity;
-      current.revenue += Number(line.unit_price) * line.quantity;
-      itemCounts[key] = current;
-    }
-  }
-
-  const topItems = Object.values(itemCounts)
-    .sort((a, b) => b.qty - a.qty)
-    .slice(0, 8);
-
-  const dayRows = Object.entries(byDay).sort((a, b) => (a[0] < b[0] ? 1 : -1));
+  const periods = [
+    { id: "today", label: "Today" },
+    { id: "7", label: "7 days" },
+    { id: "30", label: "30 days" },
+    { id: "90", label: "90 days" },
+  ] as const;
 
   return (
     <AdminShell title="Reports">
       <p className="mb-4 max-w-2xl text-sm text-muted">
-        last 30 days, cancelled orders excluded. freebies at 0 price still
-        appear in item counts if they were sold as order lines.
+        Sales for the truck day in Cairo time. Cancelled tickets stay out of
+        revenue and show as their own count.
       </p>
 
-      <form className="mb-5 flex max-w-md items-end gap-3" method="get">
+      <div className="mb-4 flex flex-wrap gap-2">
+        {periods.map((option) => {
+          const href = `/admin/reports?period=${option.id}${
+            selectedCashier ? `&cashier=${selectedCashier}` : ""
+          }`;
+          const active = period === option.id;
+
+          return (
+            <Link
+              key={option.id}
+              href={href}
+              className={`rounded-xl px-4 py-2.5 text-sm font-medium ${
+                active
+                  ? "bg-navy text-cream dark:bg-accent-surface dark:text-accent-ink"
+                  : "border border-line bg-raised text-muted"
+              }`}
+            >
+              {option.label}
+            </Link>
+          );
+        })}
+      </div>
+
+      <form className="mb-6 flex max-w-md flex-col gap-3 sm:flex-row sm:items-end">
+        <input type="hidden" name="period" value={period} />
         <label className="flex-1 text-sm">
-          cashier
+          Cashier
           <select
             name="cashier"
             defaultValue={selectedCashier}
-            className="mt-1 w-full rounded-xl border border-line bg-raised px-3 py-2"
+            className="mt-1 w-full rounded-xl border border-line bg-raised px-3 py-3"
           >
-            <option value="">all cashiers</option>
+            <option value="">All cashiers</option>
             {(cashiers ?? []).map((cashier) => (
               <option key={cashier.id} value={cashier.id}>
                 {cashier.name}
@@ -109,9 +149,9 @@ export default async function AdminReportsPage({
         </label>
         <button
           type="submit"
-          className="rounded-xl bg-navy dark:bg-accent-surface dark:text-accent-ink px-4 py-2 text-cream"
+          className="min-h-12 rounded-xl bg-navy px-5 py-3 text-sm font-semibold text-cream dark:bg-accent-surface dark:text-accent-ink"
         >
-          filter
+          Filter
         </button>
       </form>
 
@@ -119,72 +159,117 @@ export default async function AdminReportsPage({
         <p className="text-danger">{error.message}</p>
       ) : (
         <div className="space-y-6">
-          <div className="grid gap-4 md:grid-cols-3">
-            <div className="rounded-2xl bg-raised p-5 shadow-sm">
-              <p className="text-sm text-muted">Total sales</p>
-              <p className="mt-2 text-2xl font-semibold">{formatMoney(total)}</p>
-              <p className="mt-1 text-sm text-muted">{list.length} orders</p>
-            </div>
-            <div className="rounded-2xl bg-raised p-5 shadow-sm">
-              <p className="text-sm text-muted">By payment</p>
-              <ul className="mt-3 space-y-1 text-sm">
-                {Object.entries(byPayment).map(([key, value]) => (
-                  <li key={key}>
-                    {key} · {formatMoney(value)}
-                  </li>
-                ))}
-              </ul>
-            </div>
-            <div className="rounded-2xl bg-raised p-5 shadow-sm">
-              <p className="text-sm text-muted">By order type</p>
-              <ul className="mt-3 space-y-1 text-sm">
-                {Object.entries(byType).map(([key, value]) => (
-                  <li key={key}>
-                    {key} · {formatMoney(value)}
-                  </li>
-                ))}
-              </ul>
-            </div>
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <Kpi
+              label={`${periodLabel} sales`}
+              value={formatMoney(summary.salesTotal)}
+              hint={`${summary.orderCount} orders`}
+            />
+            <Kpi
+              label="Average ticket"
+              value={formatMoney(summary.averageTicket)}
+              hint="Per completed order"
+            />
+            <Kpi
+              label="Orders"
+              value={String(summary.orderCount)}
+              hint={`${summary.cancelledCount} cancelled`}
+            />
+            <Kpi
+              label="Top seller"
+              value={summary.topItems[0]?.name ?? "—"}
+              hint={
+                summary.topItems[0]
+                  ? `${summary.topItems[0].qty} sold`
+                  : "No lines yet"
+              }
+            />
           </div>
 
-          <div className="rounded-2xl bg-raised p-5 shadow-sm">
-            <h2 className="text-lg font-medium">Top items</h2>
-            {topItems.length === 0 ? (
-              <p className="mt-2 text-sm text-muted">No lines yet</p>
-            ) : (
-              <ul className="mt-3 divide-y divide-line text-sm">
-                {topItems.map((item) => (
-                  <li
-                    key={item.name}
-                    className="flex justify-between gap-3 py-2"
-                  >
-                    <span>
-                      {item.name} · qty {item.qty}
-                    </span>
-                    <span>{formatMoney(item.revenue)}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
+          <VerticalBars
+            title="Sales by day"
+            rows={summary.byDay}
+            emptyText="No sales in this range yet"
+          />
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            <HorizontalBars
+              title="Payment mix"
+              rows={summary.byPayment}
+              showCount
+            />
+            <HorizontalBars
+              title="Order type"
+              rows={summary.byType}
+              showCount
+            />
           </div>
 
-          <div className="rounded-2xl bg-raised p-5 shadow-sm">
-            <h2 className="text-lg font-medium">Sales by day</h2>
-            {dayRows.length === 0 ? (
-              <p className="mt-2 text-sm text-muted">No days yet</p>
-            ) : (
-              <ul className="mt-3 divide-y divide-line text-sm">
-                {dayRows.map(([day, value]) => (
-                  <li key={day} className="flex justify-between py-2">
-                    <span>{day}</span>
-                    <span>{formatMoney(value)}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
+          <HourBars title="Busy hours (Cairo)" rows={summary.byHour} />
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            <HorizontalBars
+              title="Cashiers"
+              rows={summary.byCashier}
+              showCount
+              emptyText="No cashier sales in this range"
+            />
+
+            <section className="rounded-2xl border border-line bg-raised p-5">
+              <h2 className="font-display text-lg font-semibold">Top items</h2>
+              {summary.topItems.length === 0 ? (
+                <p className="mt-3 text-sm text-muted">No lines yet</p>
+              ) : (
+                <ul className="mt-4 space-y-3">
+                  {summary.topItems.map((item, index) => {
+                    const max = summary.topItems[0]?.qty ?? 1;
+                    const width = Math.round((item.qty / max) * 100);
+
+                    return (
+                      <li key={item.name}>
+                        <div className="mb-1 flex items-baseline justify-between gap-3 text-sm">
+                          <span className="font-medium capitalize">
+                            {index + 1}. {item.name}
+                          </span>
+                          <span className="font-mono text-muted">
+                            {item.qty} · {formatMoney(item.revenue)}
+                          </span>
+                        </div>
+                        <div className="h-2.5 overflow-hidden rounded-full bg-sunken">
+                          <div
+                            className="h-full rounded-full bg-navy dark:bg-accent-surface"
+                            style={{ width: `${width}%` }}
+                          />
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </section>
           </div>
         </div>
       )}
     </AdminShell>
+  );
+}
+
+function Kpi({
+  label,
+  value,
+  hint,
+}: {
+  label: string;
+  value: string;
+  hint: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-line bg-raised p-5">
+      <p className="text-sm text-muted">{label}</p>
+      <p className="mt-2 font-display text-2xl font-semibold capitalize leading-tight">
+        {value}
+      </p>
+      <p className="mt-1 text-sm text-muted">{hint}</p>
+    </div>
   );
 }

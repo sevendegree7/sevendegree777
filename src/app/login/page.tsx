@@ -107,7 +107,7 @@ export default function LoginPage() {
 
       <div className="relative w-full max-w-md rounded-2xl border border-line bg-raised p-8 shadow-sm">
         <div className="text-center">
-          <BrandMark className="text-6xl" />
+          <BrandMark size="xl" className="mx-auto" />
           <p className="mt-3 font-mono text-[0.65rem] uppercase tracking-[0.22em] text-muted">
             Seven Degrees
           </p>

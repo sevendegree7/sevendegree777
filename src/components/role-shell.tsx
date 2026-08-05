@@ -20,7 +20,7 @@ export function RoleShell({ title, roleLabel, children }: RoleShellProps) {
 
       <header className="flex items-center justify-between gap-4 border-b border-line bg-raised px-4 py-3 sm:px-6">
         <div className="flex items-center gap-3 sm:gap-4">
-          <BrandMark className="text-3xl sm:text-4xl" />
+          <BrandMark size="sm" />
 
           <div className="border-s border-line ps-3 sm:ps-4">
             <p className="font-mono text-[0.65rem] uppercase tracking-[0.18em] text-muted">

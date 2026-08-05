@@ -69,6 +69,13 @@ export function truckDayKey(value: string | Date): string {
   return `${wall.year}-${month}-${day}`;
 }
 
+// the hour on the truck wall (0-23), for peak-hour reports
+export function truckHour(value: string | Date): number {
+  const date = typeof value === "string" ? new Date(value) : value;
+  if (Number.isNaN(date.getTime())) return 0;
+  return wallClock(date).hour;
+}
+
 // midnight on the truck's clock, n days back, as an instant to filter on
 export function startOfTruckDayIso(daysAgo = 0, now = new Date()): string {
   const wall = wallClock(now);

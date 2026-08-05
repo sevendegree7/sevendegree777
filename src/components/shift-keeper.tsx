@@ -119,7 +119,7 @@ export function ShiftKeeper() {
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-surface px-6">
       <div className="w-full max-w-md rounded-2xl border border-line bg-raised p-8 text-center shadow-sm">
-        <BrandMark className="text-5xl" />
+        <BrandMark size="lg" className="mx-auto" />
         <p className="mt-2 font-mono text-[0.65rem] uppercase tracking-[0.2em] text-muted">
           Seven Degrees
         </p>

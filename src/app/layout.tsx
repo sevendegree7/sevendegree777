@@ -60,6 +60,13 @@ const plexMono = IBM_Plex_Mono({
 export const metadata: Metadata = {
   title: "Seven Degrees POS",
   description: "Cairo's cartographer of taste. Till, kitchen and stock.",
+  icons: {
+    icon: [
+      { url: "/favicon.png", sizes: "48x48", type: "image/png" },
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+    ],
+    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180" }],
+  },
   // installed on the home screen, ios drops the safari chrome and stops
   // evicting the app's storage the way it does for a plain tab
   appleWebApp: {

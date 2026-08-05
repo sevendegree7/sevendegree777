@@ -1,19 +1,37 @@
-// the 7° mark.
-//
-// this is the typographic stand-in, not the real thing. the brand book draws
-// the seven as an engraved numeral with horizontal hatching inside it, and that
-// artwork only exists as flat bitmaps in the deck - it needs to come from the
-// designer as an svg before this is replaced. the two rules that are cheap to
-// honour are honoured here: navy on cream, and saffron on the degree only.
-export function BrandMark({ className = "" }: { className?: string }) {
+import Image from "next/image";
+
+// real 7° artwork from the brand deck. files live under /brand and in the
+// app icons — keep them small so the tablet does not drag a 2mb png around.
+
+const SIZES = {
+  sm: { width: 44, height: 29 },
+  md: { width: 56, height: 37 },
+  lg: { width: 80, height: 53 },
+  xl: { width: 112, height: 75 },
+  hero: { width: 160, height: 107 },
+} as const;
+
+export type BrandMarkSize = keyof typeof SIZES;
+
+export function BrandMark({
+  className = "",
+  size = "md",
+}: {
+  className?: string;
+  size?: BrandMarkSize;
+}) {
+  const dims = SIZES[size];
+
   return (
-    <span
-      // read as one word by a screen reader instead of "seven degrees symbol"
-      role="img"
-      aria-label="seven degrees"
-      className={`font-display font-black leading-none tracking-tight ${className}`}
-    >
-      7<span className="text-accent">°</span>
-    </span>
+    <Image
+      src="/brand/logo.webp"
+      alt="Seven Degrees"
+      width={dims.width}
+      height={dims.height}
+      priority={size === "hero" || size === "xl"}
+      className={`block h-auto w-auto select-none ${className}`}
+      // plain static file so the service worker can keep it offline
+      unoptimized
+    />
   );
 }

@@ -5,7 +5,7 @@
 // wifi after every deploy, and it will open anywhere after that.
 //
 // bump VERSION when you change this file or want to drop every old copy.
-const VERSION = "v2";
+const VERSION = "v3";
 const CACHE = `seven-degree-${VERSION}`;
 
 // pages worth keeping a copy of. the rest of the app needs the server anyway.
@@ -63,8 +63,10 @@ function isStaticAsset(url) {
   // so an old entry can never be served as the current one.
   return (
     url.pathname.startsWith("/_next/static/") ||
+    url.pathname.startsWith("/brand/") ||
     url.pathname.startsWith("/icon-") ||
     url.pathname === "/apple-touch-icon.png" ||
+    url.pathname === "/favicon.png" ||
     url.pathname === "/favicon.ico"
   );
 }

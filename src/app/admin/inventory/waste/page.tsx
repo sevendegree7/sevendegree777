@@ -39,6 +39,12 @@ export default async function AdminWastePage() {
     (settingsResult.data?.inventory_mode ?? "finished_goods") ===
     "finished_goods";
 
+  const wasteProducts = (productsResult.data ?? []).filter(
+    (product) =>
+      product.is_available &&
+      (product.piece_count === null || product.piece_count === undefined),
+  );
+
   const nameById: Record<string, string> = {};
   for (const item of itemsResult.data ?? []) {
     nameById[item.id] = `${item.name} (${item.unit})`;
@@ -63,13 +69,13 @@ export default async function AdminWastePage() {
   return (
     <AdminShell title="Waste">
       <p className="mb-4 max-w-2xl text-sm text-muted">
-        log burnt, dropped, or spoiled stock. this lowers inventory and does not
+        Log burnt, dropped, or spoiled stock. This lowers inventory and does not
         count as sales revenue.
       </p>
 
       {finishedGoods ? (
         <FinishedWasteForm
-          products={productsResult.data ?? []}
+          products={wasteProducts}
           stock={productStockResult.data ?? []}
         />
       ) : itemsResult.error ? (

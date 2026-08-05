@@ -90,7 +90,7 @@ export default async function PublicMenuPage() {
       />
 
       <header className="menu-rise relative text-center">
-        <BrandMark className="text-7xl" />
+        <BrandMark size="hero" className="mx-auto" />
 
         <p className="mt-4 font-mono text-[0.65rem] uppercase tracking-[0.3em] text-muted">
           Seven cuisines, one Cairo
