@@ -42,17 +42,17 @@ where not exists (
   select 1 from public.products p where p.name = v.name
 );
 
-insert into public.modifiers (product_id, name, extra_price)
-select p.id, v.name, v.extra_price
+-- shared extras: one row, one price, offered on every product
+insert into public.modifiers (product_id, name, extra_price, is_active)
+select null, v.name, v.extra_price, true
 from (
   values
-    ('tiramisu umm ali', 'extra cocoa dust', 0.00),
-    ('tiramisu umm ali', 'extra pistachio crumble', 25.00),
-    ('saffron kunafa', 'extra rose-cardamom syrup', 20.00)
-) as v (product, name, extra_price)
-join public.products p on p.name = v.product
+    ('extra cocoa dust', 0.00),
+    ('extra pistachio crumble', 25.00),
+    ('extra rose-cardamom syrup', 20.00)
+) as v (name, extra_price)
 where not exists (
   select 1
   from public.modifiers m
-  where m.product_id = p.id and m.name = v.name
+  where lower(m.name) = lower(v.name)
 );

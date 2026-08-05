@@ -30,8 +30,8 @@ describe("toPounds", () => {
 
 describe("formatMoney", () => {
   it("always shows two decimals", () => {
-    expect(formatMoney(20)).toBe("20.00 egp");
-    expect(formatMoney(45.5)).toBe("45.50 egp");
-    expect(formatMoney(0)).toBe("0.00 egp");
+    expect(formatMoney(20)).toBe("20.00 EGP");
+    expect(formatMoney(45.5)).toBe("45.50 EGP");
+    expect(formatMoney(0)).toBe("0.00 EGP");
   });
 });

@@ -12,5 +12,5 @@ export function toPounds(piastres: number): number {
 
 // one display format for every price on screen
 export function formatMoney(amount: number): string {
-  return `${amount.toFixed(2)} egp`;
+  return `${amount.toFixed(2)} EGP`;
 }

@@ -78,6 +78,111 @@ export async function updateProduct(input: {
   return { ok: true, message: "product saved" };
 }
 
+// one reusable extra, offered on every product while active.
+//
+// product_id stays null. old product-owned rows remain supported by checkout,
+// but admin creates global rows so "extra chocolate" has one price everywhere.
+export async function createGlobalExtra(input: {
+  name: string;
+  extraPrice: string;
+}): Promise<ActionResult> {
+  const { supabase, error } = await requireAdmin();
+  if (error) return { ok: false, message: error };
+
+  const name = input.name.trim();
+  const extraPrice = parseAmount(input.extraPrice);
+
+  if (!name) {
+    return { ok: false, message: "enter an extra name" };
+  }
+
+  if (extraPrice === null || extraPrice < 0) {
+    return { ok: false, message: "enter a price of zero or more" };
+  }
+
+  const { data: existing, error: lookupError } = await supabase
+    .from("modifiers")
+    .select("name");
+
+  if (lookupError) return { ok: false, message: lookupError.message };
+
+  if (
+    (existing ?? []).some(
+      (modifier) => modifier.name.trim().toLowerCase() === name.toLowerCase(),
+    )
+  ) {
+    return { ok: false, message: "an extra with this name already exists" };
+  }
+
+  const { error: insertError } = await supabase.from("modifiers").insert({
+    product_id: null,
+    name,
+    extra_price: extraPrice,
+    is_active: true,
+  });
+
+  if (insertError) return { ok: false, message: insertError.message };
+
+  revalidatePath("/admin/menu");
+  revalidatePath("/pos");
+  revalidatePath("/menu");
+  return { ok: true, message: "extra created for every item" };
+}
+
+export async function updateGlobalExtra(input: {
+  modifierId: string;
+  name: string;
+  extraPrice: string;
+  isActive: boolean;
+}): Promise<ActionResult> {
+  const { supabase, error } = await requireAdmin();
+  if (error) return { ok: false, message: error };
+
+  const name = input.name.trim();
+  const extraPrice = parseAmount(input.extraPrice);
+
+  if (!name) {
+    return { ok: false, message: "enter an extra name" };
+  }
+
+  if (extraPrice === null || extraPrice < 0) {
+    return { ok: false, message: "enter a price of zero or more" };
+  }
+
+  const { data: existing, error: lookupError } = await supabase
+    .from("modifiers")
+    .select("id, name")
+    .neq("id", input.modifierId);
+
+  if (lookupError) return { ok: false, message: lookupError.message };
+
+  if (
+    (existing ?? []).some(
+      (modifier) => modifier.name.trim().toLowerCase() === name.toLowerCase(),
+    )
+  ) {
+    return { ok: false, message: "an extra with this name already exists" };
+  }
+
+  const { error: updateError } = await supabase
+    .from("modifiers")
+    .update({
+      // editing an old product-owned extra promotes it to the shared list
+      product_id: null,
+      name,
+      extra_price: extraPrice,
+      is_active: input.isActive,
+    })
+    .eq("id", input.modifierId);
+
+  if (updateError) return { ok: false, message: updateError.message };
+
+  revalidatePath("/admin/menu");
+  revalidatePath("/pos");
+  revalidatePath("/menu");
+  return { ok: true, message: "extra saved" };
+}
+
 // add stock after a delivery.
 // the add happens inside postgres (current_stock = current_stock + n) so a sale
 // that deducts while the admin is typing is not overwritten. reading the stock

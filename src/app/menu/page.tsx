@@ -34,7 +34,9 @@ export default async function PublicMenuPage() {
   const seenAddOn = new Set<string>();
   const addOns: MenuLine[] = [];
 
-  for (const modifier of modifiers) {
+  for (const modifier of modifiers.filter(
+    (modifier) => modifier.is_active !== false,
+  )) {
     const price = Number(modifier.extra_price);
     const key = `${modifier.name.toLowerCase()}|${price}`;
 

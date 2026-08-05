@@ -2,6 +2,7 @@
 
 import type { KitchenOrder } from "@/lib/kds/orders";
 import { cartTotal, lineUnitPrice, type PricedLine } from "@/lib/pos/cart";
+import { modifierAppliesToProduct } from "@/lib/pos/modifiers";
 import type { OrderItem, SelectedModifier } from "@/types/database.types";
 import { nextLocalTicketNumber } from "@/lib/pos/ticket-counter";
 
@@ -132,8 +133,8 @@ export function createLocalSource(): DataSource {
             };
           }
 
-          // a modifier only ever belongs to its own product
-          if (modifier.product_id !== product.id) {
+          // null is a shared extra. a non-null row is still product-only.
+          if (!modifierAppliesToProduct(modifier, product.id)) {
             return {
               ok: false,
               message: `${modifier.name} does not belong to ${product.name}`,

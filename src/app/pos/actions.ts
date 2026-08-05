@@ -2,6 +2,7 @@
 
 import { isKitchenStatus, ticketNumber } from "@/lib/kds/orders";
 import { cartTotal, lineUnitPrice, type PricedLine } from "@/lib/pos/cart";
+import { modifierAppliesToProduct } from "@/lib/pos/modifiers";
 import { isValidOrderId } from "@/lib/pos/order-id";
 import { createClient } from "@/lib/supabase/server";
 import type {
@@ -124,7 +125,7 @@ export async function createOrder(
   ];
   const modifierById = new Map<
     string,
-    { id: string; product_id: string; name: string; extra_price: number }
+    { id: string; product_id: string | null; name: string; extra_price: number }
   >();
 
   if (modifierIds.length > 0) {
@@ -169,8 +170,8 @@ export async function createOrder(
         return { ok: false, message: "a modifier in the cart no longer exists" };
       }
 
-      // a modifier only ever belongs to its own product
-      if (modifier.product_id !== product.id) {
+      // null is a shared extra. a non-null row is still product-only.
+      if (!modifierAppliesToProduct(modifier, product.id)) {
         return {
           ok: false,
           message: `${modifier.name} does not belong to ${product.name}`,

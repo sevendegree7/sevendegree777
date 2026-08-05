@@ -55,7 +55,11 @@ export function createCloudSource(): DataSource {
       const snapshot: MenuSnapshot = {
         categories: categories.data ?? [],
         products: products.data ?? [],
-        modifiers: modifiers.data ?? [],
+        // inactive extras stay in the database for old receipts and recipes,
+        // but never enter the online or offline till menu
+        modifiers: (modifiers.data ?? []).filter(
+          (modifier) => modifier.is_active !== false,
+        ),
         fetchedAt: new Date().toISOString(),
       };
 

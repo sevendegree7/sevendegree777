@@ -100,9 +100,10 @@ or tokyo blue even though the tab above it says "desserts".
 - **beverages**: the category exists and is empty on purpose. the old drinks were
   retired with the bakery menu. add real ones in admin and the tab appears by
   itself.
-- **extras**: stays as `modifiers` in the database, so the add-on flow and
-  pricing are unchanged. the category row exists so admin can add a separately
-  sellable extra later if they want one.
+- **extras**: stays as `modifiers`, but is reusable now. admin creates "extra
+  chocolate" once with one price and every active extra appears on every item.
+  old product-owned extras are promoted to the shared list by the migration.
+  deactivating one hides it without breaking old receipts or ingredient recipes.
 
 ## 4. production database
 
@@ -112,7 +113,8 @@ apply through the versioned migrations in `supabase/migrations/`:
 | --- | --- |
 | `20260805130000_launch_hardening.sql` | applied |
 | `20260805150000_seven_fusions_menu.sql` | applied |
-| `20260805170000_menu_four_categories.sql` | **needs applying** |
+| `20260805170000_menu_four_categories.sql` | applied |
+| `20260805190000_global_extras.sql` | applied |
 
 ```bash
 npx supabase db push
@@ -132,9 +134,11 @@ each cuisine colour down onto its products, collapses the seven cuisines into
 `desserts`, and deactivates every category outside the four. nothing is deleted,
 because retired products and real past orders still point at the old rows.
 
-the app code is safe to deploy before this migration runs. it reads
-`is_active !== false` and `product.color ?? category.color`, so an un-migrated
-database keeps working and simply keeps the old grouping.
+`global_extras` makes `modifiers.product_id` nullable and adds
+`modifiers.is_active`. null means the extra is shared by the whole menu. old
+extras are made global, while checkout still understands a non-null product id
+for a future product-only option. order items already snapshot the chosen name
+and price, so old receipts do not change.
 
 ## 5. required environment
 
@@ -154,7 +158,7 @@ run locally on every change:
 
 ```bash
 npm run lint
-npm test      # 75 passing
+npm test      # 79 passing
 npm run build
 ```
 
@@ -170,7 +174,7 @@ colours, stock rows, today's ticket counter, and the staff accounts. last run
 passed with KDS off, finished-goods mode, two copies, 10 live products, 18 stock
 rows and 3 active accounts.
 
-after applying `menu_four_categories`, check by hand:
+after applying the latest migrations, check by hand:
 
 1. the till shows exactly four tabs, and no tab is empty.
 2. a dessert card still shows its cuisine colour on the leading edge.
@@ -178,6 +182,10 @@ after applying `menu_four_categories`, check by hand:
 4. ring a sale and confirm two papers: order number large on both, prices on the
    first only.
 5. cancel that sale from history and confirm the pieces come back.
+6. create "extra chocolate" in `/admin/menu`, then tap two different products
+   on the till and confirm it appears on both at the same price.
+7. turn that extra off in admin, refresh the till menu, and confirm it disappears
+   from the till and the QR extras tab while old receipts still show it.
 
 ## 7. what is still open
 

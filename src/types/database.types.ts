@@ -64,9 +64,11 @@ export type Product = {
 
 export type Modifier = {
   id: string;
-  product_id: string;
+  // null means this extra is offered on every product
+  product_id: string | null;
   name: string;
   extra_price: number;
+  is_active: boolean;
   created_at: string;
 };
 
@@ -231,16 +233,18 @@ export type Database = {
         Row: Modifier;
         Insert: {
           id?: string;
-          product_id: string;
+          product_id?: string | null;
           name: string;
           extra_price?: number;
+          is_active?: boolean;
           created_at?: string;
         };
         Update: {
           id?: string;
-          product_id?: string;
+          product_id?: string | null;
           name?: string;
           extra_price?: number;
+          is_active?: boolean;
           created_at?: string;
         };
         Relationships: [];

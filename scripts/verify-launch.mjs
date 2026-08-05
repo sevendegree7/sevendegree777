@@ -69,6 +69,23 @@ if (categories.error) {
   ]);
 }
 
+// one null product_id means one reusable price on the whole menu
+const extras = await select(
+  "modifiers?select=name,extra_price,product_id,is_active&order=created_at",
+);
+if (extras.error) {
+  checks.push(["global_extras", `FAIL ${extras.error}`]);
+} else {
+  const active = extras.data.filter((extra) => extra.is_active);
+  const global = active.filter((extra) => extra.product_id === null);
+  checks.push([
+    "global_extras",
+    global.length === active.length
+      ? `ok  ${global.length} active, all shared`
+      : `FAIL ${active.length - global.length} active extras still product-only`,
+  ]);
+}
+
 // finished-goods stock rows must exist for every sellable product
 const stock = await select("product_stock?select=product_id,current_stock");
 if (stock.error) {

@@ -23,11 +23,11 @@ import {
 } from "@/lib/pos/cart";
 import { cartLinesFromOrder } from "@/lib/pos/edit-order";
 import { formatMoney } from "@/lib/pos/money";
+import { groupModifiersByProduct } from "@/lib/pos/modifiers";
 import { buildReceipt, type Receipt } from "@/lib/pos/receipt";
 import { primeTicketCounter } from "@/lib/pos/ticket-counter";
 import type {
   AppSettings,
-  Modifier,
   OrderType,
   PaymentMethod,
   Product,
@@ -191,20 +191,15 @@ export function PosScreen({
     };
   }, [connection, menu]);
 
-  // modifiers grouped once so tapping a product is instant
+  // extras grouped once so tapping a product is instant.
+  //
+  // a null product_id is a shared extra and is copied into every product's
+  // list. non-null rows remain supported for any product-only option.
   const modifiersByProduct = useMemo(() => {
-    const grouped = new Map<string, Modifier[]>();
-
-    for (const modifier of menu?.modifiers ?? []) {
-      const existing = grouped.get(modifier.product_id);
-      if (existing) {
-        existing.push(modifier);
-      } else {
-        grouped.set(modifier.product_id, [modifier]);
-      }
-    }
-
-    return grouped;
+    return groupModifiersByProduct(
+      menu?.products ?? [],
+      menu?.modifiers ?? [],
+    );
   }, [menu]);
 
   // only tabs the cashier can actually sell from.

@@ -7,7 +7,10 @@ import type { MenuSnapshot } from "./types";
 //
 // localstorage and not indexeddb: the whole menu is a few kilobytes, and a
 // synchronous read means the grid can paint without waiting.
-const KEY = "seven-degree.menu.v1";
+// bump when the menu snapshot meaning changes. v2 is global extras: a null
+// product_id is shared by every item, so an old v1 cache would keep offering
+// product-owned copies after the database has already made them global.
+const KEY = "seven-degree.menu.v2";
 
 // storage can be full, disabled, or hold something from an older build.
 // none of that is worth breaking the till over, so every path fails quietly.
