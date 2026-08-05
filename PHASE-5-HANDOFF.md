@@ -115,6 +115,7 @@ apply through the versioned migrations in `supabase/migrations/`:
 | `20260805150000_seven_fusions_menu.sql` | applied |
 | `20260805170000_menu_four_categories.sql` | applied |
 | `20260805190000_global_extras.sql` | applied |
+| `20260805200000_admin_menu_boxes.sql` | applied |
 
 ```bash
 npx supabase db push
@@ -140,6 +141,12 @@ extras are made global, while checkout still understands a non-null product id
 for a future product-only option. order items already snapshot the chosen name
 and price, so old receipts do not change.
 
+`admin_menu_boxes` adds Dunkin-style packs: `products.piece_count`,
+`products.contents_category_id`, and `order_items.box_contents`. selling a box
+deducts each chosen flavor from finished-goods stock, not the box sku. existing
+boxes are backfilled against desserts. admin menu has Products/Extras tabs with
+create/archive, and arabic works on `/admin`.
+
 ## 5. required environment
 
 local and Vercel both need:
@@ -158,7 +165,7 @@ run locally on every change:
 
 ```bash
 npm run lint
-npm test      # 79 passing
+npm test      # 84 passing
 npm run build
 ```
 

@@ -59,7 +59,18 @@ export type Product = {
   // the cuisine colour, kept on the product now that the seven cuisines are no
   // longer categories in their own right
   color: string | null;
+  // dunkin-style pack: how many flavors the cashier must pick. null = normal item
+  piece_count: number | null;
+  // category those flavors come from (e.g. desserts for a box of six)
+  contents_category_id: string | null;
   created_at: string;
+};
+
+// one flavor packed into a sold box. price is not here - the box has one price
+export type BoxContent = {
+  id: string;
+  name: string;
+  quantity: number;
 };
 
 export type Modifier = {
@@ -158,6 +169,8 @@ export type OrderItem = {
   quantity: number;
   unit_price: number;
   selected_modifiers: SelectedModifier[];
+  // flavors packed into this line when the product is a box
+  box_contents: BoxContent[];
   notes: string | null;
   created_at: string;
 };
@@ -215,6 +228,8 @@ export type Database = {
           is_available?: boolean;
           sort_order?: number;
           color?: string | null;
+          piece_count?: number | null;
+          contents_category_id?: string | null;
           created_at?: string;
         };
         Update: {
@@ -225,6 +240,8 @@ export type Database = {
           is_available?: boolean;
           sort_order?: number;
           color?: string | null;
+          piece_count?: number | null;
+          contents_category_id?: string | null;
           created_at?: string;
         };
         Relationships: [];
@@ -293,6 +310,7 @@ export type Database = {
           quantity?: number;
           unit_price: number;
           selected_modifiers?: SelectedModifier[];
+          box_contents?: BoxContent[];
           notes?: string | null;
           created_at?: string;
         };
@@ -304,6 +322,7 @@ export type Database = {
           quantity?: number;
           unit_price?: number;
           selected_modifiers?: SelectedModifier[];
+          box_contents?: BoxContent[];
           notes?: string | null;
           created_at?: string;
         };

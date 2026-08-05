@@ -27,6 +27,11 @@ function normalizeItem(row: OrderItem): OrderItem {
       ...modifier,
       extra_price: Number(modifier.extra_price),
     })),
+    box_contents: (row.box_contents ?? []).map((piece) => ({
+      id: piece.id,
+      name: piece.name,
+      quantity: Number(piece.quantity),
+    })),
   };
 }
 

@@ -19,6 +19,7 @@ function item(over: Partial<OrderItem> = {}): OrderItem {
     quantity: 1,
     unit_price: 20,
     selected_modifiers: [],
+    box_contents: [],
     notes: null,
     created_at: "2026-08-05T10:00:00.000Z",
     ...over,

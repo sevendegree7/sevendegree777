@@ -1,5 +1,6 @@
-import type { SelectedModifier } from "@/types/database.types";
+import type { BoxContent, SelectedModifier } from "@/types/database.types";
 
+import { boxContentsSignature } from "./box";
 import { toPiastres, toPounds } from "./money";
 
 // the smallest shape we can price. the browser cart and the server action
@@ -16,6 +17,8 @@ export type CartLine = PricedLine & {
   lineId: string;
   productId: string;
   productName: string;
+  // dunkin pack flavors. empty for a normal item
+  boxContents: BoxContent[];
   notes: string | null;
 };
 
@@ -69,6 +72,7 @@ export function saleSignature(input: {
         line.productId,
         line.quantity,
         modifierSignature(line.selectedModifiers),
+        boxContentsSignature(line.boxContents),
         line.notes ?? "",
       ].join("~"),
     )

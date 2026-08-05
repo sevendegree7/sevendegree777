@@ -1,9 +1,17 @@
 "use client";
 
 import type { KitchenOrder } from "@/lib/kds/orders";
+import {
+  isBoxProduct,
+  validateBoxContents,
+} from "@/lib/pos/box";
 import { cartTotal, lineUnitPrice, type PricedLine } from "@/lib/pos/cart";
 import { modifierAppliesToProduct } from "@/lib/pos/modifiers";
-import type { OrderItem, SelectedModifier } from "@/types/database.types";
+import type {
+  BoxContent,
+  OrderItem,
+  SelectedModifier,
+} from "@/types/database.types";
 import { nextLocalTicketNumber } from "@/lib/pos/ticket-counter";
 
 import { readCachedMenu } from "./menu-cache";
@@ -108,6 +116,7 @@ export function createLocalSource(): DataSource {
       const pricedLines: (PricedLine & {
         productId: string;
         productName: string;
+        boxContents: BoxContent[];
         notes: string | null;
       })[] = [];
 
@@ -148,12 +157,59 @@ export function createLocalSource(): DataSource {
           });
         }
 
+        let boxContents: BoxContent[] = [];
+
+        if (isBoxProduct(product)) {
+          const allowed = new Set(
+            menu.products
+              .filter(
+                (candidate) =>
+                  candidate.category_id === product.contents_category_id &&
+                  candidate.is_available &&
+                  !isBoxProduct(candidate),
+              )
+              .map((candidate) => candidate.id),
+          );
+
+          const rebuilt: BoxContent[] = [];
+          for (const piece of line.boxContents ?? []) {
+            const flavor = productById.get(piece.id);
+            if (!flavor) {
+              return {
+                ok: false,
+                message: "a flavor in the box is not in the saved menu.",
+              };
+            }
+            rebuilt.push({
+              id: flavor.id,
+              name: flavor.name,
+              quantity: piece.quantity,
+            });
+          }
+
+          const boxError = validateBoxContents({
+            pieceCount: product.piece_count!,
+            contentsCategoryId: product.contents_category_id!,
+            contents: rebuilt,
+            allowedProductIds: allowed,
+          });
+
+          if (boxError) {
+            return { ok: false, message: boxError };
+          }
+
+          boxContents = rebuilt;
+        } else if ((line.boxContents ?? []).length > 0) {
+          return { ok: false, message: `${product.name} is not a box` };
+        }
+
         pricedLines.push({
           productId: product.id,
           productName: product.name,
           basePrice: Number(product.base_price),
           quantity: line.quantity,
           selectedModifiers,
+          boxContents,
           notes: line.notes,
         });
       }
@@ -173,6 +229,7 @@ export function createLocalSource(): DataSource {
         quantity: line.quantity,
         unit_price: lineUnitPrice(line),
         selected_modifiers: line.selectedModifiers,
+        box_contents: line.boxContents,
         notes: line.notes,
         created_at: takenAt,
       }));

@@ -23,11 +23,16 @@ import {
 } from "@/lib/pos/cart";
 import { cartLinesFromOrder } from "@/lib/pos/edit-order";
 import { formatMoney } from "@/lib/pos/money";
+import {
+  boxContentsSignature,
+  isBoxProduct,
+} from "@/lib/pos/box";
 import { groupModifiersByProduct } from "@/lib/pos/modifiers";
 import { buildReceipt, type Receipt } from "@/lib/pos/receipt";
 import { primeTicketCounter } from "@/lib/pos/ticket-counter";
 import type {
   AppSettings,
+  BoxContent,
   OrderType,
   PaymentMethod,
   Product,
@@ -36,6 +41,7 @@ import type {
 
 import { type CheckoutLine } from "./actions";
 import { CartPanel } from "./components/cart-panel";
+import { BoxBuilderModal } from "./components/box-builder-modal";
 import { CategoryTabs } from "./components/category-tabs";
 import { ConfirmDialog } from "./components/confirm-dialog";
 import { ModifierModal } from "./components/modifier-modal";
@@ -83,6 +89,7 @@ export function PosScreen({
   const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null);
   const [cart, setCart] = useState<CartLine[]>([]);
   const [modalProduct, setModalProduct] = useState<Product | null>(null);
+  const [boxProduct, setBoxProduct] = useState<Product | null>(null);
   const [orderType, setOrderType] = useState<OrderType>("takeaway");
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash");
   const [orderNotes, setOrderNotes] = useState("");
@@ -269,18 +276,21 @@ export function PosScreen({
     selectedModifiers: SelectedModifier[],
     quantity: number,
     notes: string | null,
+    boxContents: BoxContent[] = [],
   ) {
     setFeedback(null);
     setCart((current) => {
       const signature = modifierSignature(selectedModifiers);
+      const boxSignature = boxContentsSignature(boxContents);
       const matchIndex = current.findIndex(
         (line) =>
           line.productId === product.id &&
           modifierSignature(line.selectedModifiers) === signature &&
+          boxContentsSignature(line.boxContents) === boxSignature &&
           (line.notes ?? "") === (notes ?? ""),
       );
 
-      // same product with the same extras and note just bumps quantity
+      // same product with the same extras, pack and note just bumps quantity
       if (matchIndex >= 0) {
         const next = [...current];
         next[matchIndex] = {
@@ -299,6 +309,7 @@ export function PosScreen({
           basePrice: Number(product.base_price),
           quantity,
           selectedModifiers,
+          boxContents,
           notes,
         },
       ];
@@ -306,6 +317,11 @@ export function PosScreen({
   }
 
   function onProductSelect(product: Product) {
+    if (isBoxProduct(product)) {
+      setBoxProduct(product);
+      return;
+    }
+
     const productModifiers = modifiersByProduct.get(product.id) ?? [];
 
     // nothing to choose, straight into the cart
@@ -375,6 +391,7 @@ export function PosScreen({
       productId: line.productId,
       quantity: line.quantity,
       modifierIds: line.selectedModifiers.map((modifier) => modifier.id),
+      boxContents: line.boxContents,
       notes: line.notes,
     }));
 
@@ -571,7 +588,16 @@ export function PosScreen({
 
             <ProductGrid
               products={visibleProducts}
-              hasModifiers={(productId) => modifiersByProduct.has(productId)}
+              hasModifiers={(productId) => {
+                const product = menu.products.find(
+                  (candidate) => candidate.id === productId,
+                );
+                return Boolean(
+                  product &&
+                    (isBoxProduct(product) ||
+                      modifiersByProduct.has(productId)),
+                );
+              }}
               // the product's own cuisine colour wins. the category colour is
               // only a fallback for rows seeded before the colour moved.
               colourOf={(product) =>
@@ -617,6 +643,29 @@ export function PosScreen({
           onAdd={(selectedModifiers, quantity, notes) => {
             addToCart(modalProduct, selectedModifiers, quantity, notes);
             setModalProduct(null);
+          }}
+        />
+      ) : null}
+
+      {boxProduct ? (
+        <BoxBuilderModal
+          product={boxProduct}
+          flavors={(menu?.products ?? []).filter(
+            (candidate) =>
+              candidate.category_id === boxProduct.contents_category_id &&
+              !isBoxProduct(candidate),
+          )}
+          modifiers={modifiersByProduct.get(boxProduct.id) ?? []}
+          onCancel={() => setBoxProduct(null)}
+          onAdd={(boxContents, selectedModifiers, quantity, notes) => {
+            addToCart(
+              boxProduct,
+              selectedModifiers,
+              quantity,
+              notes,
+              boxContents,
+            );
+            setBoxProduct(null);
           }}
         />
       ) : null}

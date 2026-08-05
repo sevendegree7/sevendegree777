@@ -19,6 +19,8 @@ export type ReceiptLine = {
   name: string;
   // modifier names, already priced into the unit price
   extras: string[];
+  // dunkin pack flavors, shown under the box name
+  boxContents: string[];
   quantity: number;
   unitPrice: number;
   lineTotal: number;
@@ -74,6 +76,9 @@ export function buildReceipt(
   const lines: ReceiptLine[] = order.items.map((item) => ({
     name: item.product_name,
     extras: item.selected_modifiers.map((modifier) => modifier.name),
+    boxContents: (item.box_contents ?? []).map(
+      (piece) => `${piece.quantity}× ${piece.name}`,
+    ),
     quantity: item.quantity,
     unitPrice: Number(item.unit_price),
     lineTotal: receiptLineTotal(Number(item.unit_price), item.quantity),

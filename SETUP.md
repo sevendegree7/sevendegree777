@@ -66,6 +66,7 @@ the forward migrations currently in the repo are:
 - `supabase/migrations/20260805150000_seven_fusions_menu.sql` — replaces the placeholder bakery list with the seven fusions from the brand book
 - `supabase/migrations/20260805170000_menu_four_categories.sql` — groups the range into desserts, extras, boxes, and beverages
 - `supabase/migrations/20260805190000_global_extras.sql` — makes one admin-created extra reusable across every item
+- `supabase/migrations/20260805200000_admin_menu_boxes.sql` — dunkin-style boxes, product create/archive support fields, box stock deduct
 
 do not paste production hot-fixes or edit a migration after it has been applied.
 

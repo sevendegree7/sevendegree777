@@ -6,10 +6,12 @@ import { modifierAppliesToProduct } from "@/lib/pos/modifiers";
 import { isValidOrderId } from "@/lib/pos/order-id";
 import { createClient } from "@/lib/supabase/server";
 import type {
+  BoxContent,
   OrderType,
   PaymentMethod,
   SelectedModifier,
 } from "@/types/database.types";
+import { isBoxProduct, validateBoxContents } from "@/lib/pos/box";
 
 // what the browser sends at checkout.
 // ids only - every price is re-read from the db below so a tampered or stale
@@ -18,6 +20,8 @@ export type CheckoutLine = {
   productId: string;
   quantity: number;
   modifierIds: string[];
+  // flavor ids and quantities for a dunkin-style box. empty for normal items
+  boxContents: BoxContent[];
   notes: string | null;
 };
 
@@ -109,10 +113,19 @@ export async function createOrder(
 
   // authoritative menu prices
   const productIds = [...new Set(input.lines.map((line) => line.productId))];
+  const flavorIds = [
+    ...new Set(
+      input.lines.flatMap((line) =>
+        (line.boxContents ?? []).map((piece) => piece.id),
+      ),
+    ),
+  ];
   const { data: products, error: productsError } = await supabase
     .from("products")
-    .select("id, name, base_price, is_available")
-    .in("id", productIds);
+    .select(
+      "id, name, base_price, is_available, piece_count, contents_category_id, category_id",
+    )
+    .in("id", [...new Set([...productIds, ...flavorIds])]);
 
   if (productsError || !products) {
     return { ok: false, message: "could not load menu prices. try again." };
@@ -147,6 +160,7 @@ export async function createOrder(
   const pricedLines: (PricedLine & {
     productId: string;
     productName: string;
+    boxContents: BoxContent[];
     notes: string | null;
   })[] = [];
 
@@ -185,12 +199,56 @@ export async function createOrder(
       });
     }
 
+    let boxContents: BoxContent[] = [];
+
+    if (isBoxProduct(product)) {
+      const allowed = new Set(
+        products
+          .filter(
+            (candidate) =>
+              candidate.category_id === product.contents_category_id &&
+              candidate.is_available &&
+              !isBoxProduct(candidate),
+          )
+          .map((candidate) => candidate.id),
+      );
+
+      const rebuilt: BoxContent[] = [];
+      for (const piece of line.boxContents ?? []) {
+        const flavor = productById.get(piece.id);
+        if (!flavor) {
+          return { ok: false, message: "a flavor in the box no longer exists" };
+        }
+        rebuilt.push({
+          id: flavor.id,
+          name: flavor.name,
+          quantity: piece.quantity,
+        });
+      }
+
+      const boxError = validateBoxContents({
+        pieceCount: product.piece_count!,
+        contentsCategoryId: product.contents_category_id!,
+        contents: rebuilt,
+        allowedProductIds: allowed,
+      });
+
+      if (boxError) {
+        return { ok: false, message: boxError };
+      }
+
+      boxContents = rebuilt;
+    } else if ((line.boxContents ?? []).length > 0) {
+      return { ok: false, message: `${product.name} is not a box` };
+    }
+
     pricedLines.push({
       productId: product.id,
       productName: product.name,
       basePrice: Number(product.base_price),
       quantity: line.quantity,
       selectedModifiers,
+      boxContents,
       notes: line.notes,
     });
   }
@@ -280,6 +338,7 @@ export async function createOrder(
       quantity: line.quantity,
       unit_price: lineUnitPrice(line),
       selected_modifiers: line.selectedModifiers,
+      box_contents: line.boxContents,
       notes: line.notes,
     })),
   );

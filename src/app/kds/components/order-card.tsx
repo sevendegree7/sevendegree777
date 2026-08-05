@@ -115,6 +115,14 @@ export function OrderCard({
                 {item.product_name}
               </p>
 
+              {item.box_contents && item.box_contents.length > 0 ? (
+                <p className="mt-2 text-sm text-muted">
+                  {item.box_contents
+                    .map((piece) => `${piece.quantity}× ${piece.name}`)
+                    .join(", ")}
+                </p>
+              ) : null}
+
               {item.selected_modifiers.length > 0 ? (
                 <div className="mt-2 flex flex-wrap gap-1">
                   {item.selected_modifiers.map((modifier) => (

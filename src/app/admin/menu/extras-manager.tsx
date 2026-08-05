@@ -2,14 +2,13 @@
 
 import { useState, useTransition } from "react";
 
-import {
-  createGlobalExtra,
-  updateGlobalExtra,
-} from "@/app/admin/actions";
+import { createGlobalExtra, updateGlobalExtra } from "@/app/admin/actions";
+import { useTranslate } from "@/lib/i18n/use-language";
 import { formatMoney } from "@/lib/pos/money";
 import type { Modifier } from "@/types/database.types";
 
 export function ExtrasManager({ extras }: { extras: Modifier[] }) {
+  const { t } = useTranslate();
   const [name, setName] = useState("");
   const [price, setPrice] = useState("");
   const [message, setMessage] = useState<string | null>(null);
@@ -20,7 +19,7 @@ export function ExtrasManager({ extras }: { extras: Modifier[] }) {
 
     startTransition(async () => {
       const result = await createGlobalExtra({ name, extraPrice: price });
-      setMessage(result.message ?? (result.ok ? "Extra created" : "Could not create extra"));
+      setMessage(result.message ?? "");
 
       if (result.ok) {
         setName("");
@@ -30,23 +29,20 @@ export function ExtrasManager({ extras }: { extras: Modifier[] }) {
   }
 
   return (
-    <section className="mb-8 rounded-2xl border border-line bg-raised p-4 shadow-sm sm:p-5">
+    <section className="rounded-2xl border border-line bg-raised p-4 shadow-sm sm:p-5">
       <div className="max-w-2xl">
         <p className="font-mono text-[0.7rem] uppercase tracking-[0.16em] text-muted">
-          Shared extras
+          {t("admin.extras.sharedLabel")}
         </p>
         <h2 className="font-display mt-1 text-2xl font-semibold">
-          Extras for every item
+          {t("admin.extras.title")}
         </h2>
-        <p className="mt-2 text-sm text-muted">
-          Create an extra once. Every active extra appears when the cashier taps
-          any dessert, box, or beverage.
-        </p>
+        <p className="mt-2 text-sm text-muted">{t("admin.extras.hint")}</p>
       </div>
 
       <div className="mt-5 grid gap-3 sm:grid-cols-[minmax(0,1fr)_9rem_auto] sm:items-end">
         <label className="text-sm">
-          Extra name
+          {t("admin.extras.name")}
           <input
             type="text"
             value={name}
@@ -56,7 +52,7 @@ export function ExtrasManager({ extras }: { extras: Modifier[] }) {
           />
         </label>
         <label className="text-sm">
-          Price
+          {t("admin.extras.price")}
           <input
             type="number"
             min="0"
@@ -73,7 +69,7 @@ export function ExtrasManager({ extras }: { extras: Modifier[] }) {
           onClick={create}
           className="min-h-12 rounded-xl bg-navy px-5 py-3 text-sm font-semibold text-cream disabled:opacity-60 dark:bg-accent-surface dark:text-accent-ink"
         >
-          {pending ? "Creating..." : "Create extra"}
+          {pending ? t("admin.extras.creating") : t("admin.extras.create")}
         </button>
       </div>
 
@@ -82,7 +78,7 @@ export function ExtrasManager({ extras }: { extras: Modifier[] }) {
       <div className="mt-6 space-y-3">
         {extras.length === 0 ? (
           <p className="rounded-xl bg-sunken p-4 text-sm text-muted">
-            No extras yet.
+            {t("admin.extras.empty")}
           </p>
         ) : (
           extras.map((extra) => <ExtraRow key={extra.id} extra={extra} />)
@@ -93,6 +89,7 @@ export function ExtrasManager({ extras }: { extras: Modifier[] }) {
 }
 
 function ExtraRow({ extra }: { extra: Modifier }) {
+  const { t } = useTranslate();
   const [name, setName] = useState(extra.name);
   const [price, setPrice] = useState(String(Number(extra.extra_price)));
   const [active, setActive] = useState(extra.is_active !== false);
@@ -109,7 +106,7 @@ function ExtraRow({ extra }: { extra: Modifier }) {
         extraPrice: price,
         isActive: active,
       });
-      setMessage(result.message ?? (result.ok ? "Saved" : "Could not save"));
+      setMessage(result.message ?? "");
     });
   }
 
@@ -117,7 +114,7 @@ function ExtraRow({ extra }: { extra: Modifier }) {
     <div className="rounded-xl border border-line bg-surface p-4">
       <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_8rem_auto_auto] sm:items-end">
         <label className="text-sm">
-          Name
+          {t("admin.menu.name")}
           <input
             type="text"
             value={name}
@@ -126,7 +123,7 @@ function ExtraRow({ extra }: { extra: Modifier }) {
           />
         </label>
         <label className="text-sm">
-          Price
+          {t("admin.extras.price")}
           <input
             type="number"
             min="0"
@@ -143,7 +140,7 @@ function ExtraRow({ extra }: { extra: Modifier }) {
             onChange={(event) => setActive(event.target.checked)}
             className="h-5 w-5 accent-[var(--accent-surface)]"
           />
-          Active
+          {t("admin.extras.active")}
         </label>
         <button
           type="button"
@@ -151,14 +148,15 @@ function ExtraRow({ extra }: { extra: Modifier }) {
           onClick={save}
           className="min-h-11 rounded-xl border border-navy px-4 py-2 text-sm font-medium text-ink disabled:opacity-60 dark:border-accent"
         >
-          {pending ? "Saving..." : "Save"}
+          {pending ? t("admin.extras.saving") : t("admin.extras.save")}
         </button>
       </div>
       <div className="mt-2 flex flex-wrap justify-between gap-2 text-xs text-muted">
         <span>
-          Current: {Number(extra.extra_price) > 0
+          {t("admin.extras.current")}:{" "}
+          {Number(extra.extra_price) > 0
             ? formatMoney(Number(extra.extra_price))
-            : "No charge"}
+            : t("modifier.free")}
         </span>
         {message ? <span>{message}</span> : null}
       </div>

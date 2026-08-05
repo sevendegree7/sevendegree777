@@ -69,6 +69,7 @@ function toLines(order: KitchenOrder): CheckoutLine[] | null {
       productId: item.product_id,
       quantity: item.quantity,
       modifierIds: item.selected_modifiers.map((modifier) => modifier.id),
+      boxContents: item.box_contents ?? [],
       notes: item.notes,
     });
   }

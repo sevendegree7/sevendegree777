@@ -45,6 +45,7 @@ export function cartLinesFromOrder(order: KitchenOrder): CartLine[] | null {
       basePrice: basePriceOf(Number(item.unit_price), item.selected_modifiers),
       quantity: item.quantity,
       selectedModifiers: item.selected_modifiers,
+      boxContents: item.box_contents ?? [],
       notes: item.notes,
     });
   }

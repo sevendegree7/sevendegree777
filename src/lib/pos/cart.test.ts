@@ -27,6 +27,7 @@ function cartLine(over: Partial<CartLine> = {}): CartLine {
     basePrice: 20,
     quantity: 1,
     selectedModifiers: [],
+    boxContents: [],
     notes: null,
     ...over,
   };

@@ -10,7 +10,7 @@ import type { MenuSnapshot } from "./types";
 // bump when the menu snapshot meaning changes. v2 is global extras: a null
 // product_id is shared by every item, so an old v1 cache would keep offering
 // product-owned copies after the database has already made them global.
-const KEY = "seven-degree.menu.v2";
+const KEY = "seven-degree.menu.v3";
 
 // storage can be full, disabled, or hold something from an older build.
 // none of that is worth breaking the till over, so every path fails quietly.

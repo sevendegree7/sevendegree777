@@ -30,9 +30,7 @@ function read(): Language {
   }
 }
 
-// only the till and the sign in page are bilingual. flipping the whole
-// document to rtl would drag the kitchen board and admin along with it, and
-// those are still english.
+// only the till, login and admin are bilingual. kitchen stays english.
 function applyDocument(next: Language): void {
   const root = document.documentElement;
   const bilingual = isBilingualPath(window.location.pathname);

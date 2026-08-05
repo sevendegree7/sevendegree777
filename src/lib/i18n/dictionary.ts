@@ -1,13 +1,12 @@
 import type { Language } from "@/lib/ui/preferences";
 
-// every word the cashier can see, in both languages.
+// every word the cashier and admin can see, in both languages.
 //
-// arabic is a till feature for now: the kitchen board and admin are english
-// only, so nothing outside /pos and /login needs a key here yet.
+// arabic covers /pos, /login and /admin. the kitchen board stays english.
 //
 // messages that come back from a server action are not in this file. the
 // server does not know which language the tablet is set to, so those arrive in
-// english and are shown as-is. worth fixing the day the kitchen goes bilingual.
+// english and are shown as-is.
 
 const en = {
   "brand.tagline": "Cairo's cartographer of taste",
@@ -149,6 +148,64 @@ const en = {
   "status.ready": "Ready",
   "status.completed": "Completed",
   "status.cancelled": "Cancelled",
+
+  "admin.role": "Admin",
+  "admin.nav.overview": "Overview",
+  "admin.nav.menu": "Menu",
+  "admin.nav.inventory": "Inventory",
+  "admin.nav.waste": "Waste",
+  "admin.nav.recipes": "Recipes",
+  "admin.nav.reports": "Reports",
+  "admin.nav.staff": "Staff",
+  "admin.nav.settings": "Settings",
+
+  "admin.menu.tabProducts": "Products",
+  "admin.menu.tabExtras": "Extras",
+  "admin.menu.addProduct": "Add product",
+  "admin.menu.addProductHint":
+    "Pick a category. For boxes, also set the pack size and what it contains.",
+  "admin.menu.name": "Name",
+  "admin.menu.category": "Category",
+  "admin.menu.price": "Price",
+  "admin.menu.pieceCount": "Pack size",
+  "admin.menu.contains": "Contains",
+  "admin.menu.available": "Available on the till",
+  "admin.menu.create": "Create product",
+  "admin.menu.creating": "Creating...",
+  "admin.menu.created": "Product created",
+  "admin.menu.save": "Save",
+  "admin.menu.saving": "Saving...",
+  "admin.menu.saved": "Saved",
+  "admin.menu.archive": "Archive",
+  "admin.menu.restore": "Restore",
+  "admin.menu.archived": "Archived",
+  "admin.menu.showArchived": "Show archived",
+  "admin.menu.noProducts": "No products in this list yet.",
+  "admin.menu.productCount": "{count} products",
+  "admin.menu.uncategorized": "Uncategorized",
+  "admin.menu.packOf": "pack of {count}",
+
+  "admin.extras.title": "Extras for every item",
+  "admin.extras.hint":
+    "Create an extra once. Every active extra appears when the cashier taps any item.",
+  "admin.extras.name": "Extra name",
+  "admin.extras.price": "Price",
+  "admin.extras.create": "Create extra",
+  "admin.extras.creating": "Creating...",
+  "admin.extras.empty": "No extras yet.",
+  "admin.extras.active": "Active",
+  "admin.extras.save": "Save",
+  "admin.extras.saving": "Saving...",
+  "admin.extras.current": "Current",
+  "admin.extras.sharedLabel": "Shared extras",
+
+  "box.title": "Build the box",
+  "box.pick": "Pick {count} pieces",
+  "box.selected": "{count} of {total} selected",
+  "box.add": "Add box",
+  "box.cancel": "Cancel",
+  "box.empty": "Nothing available in this category.",
+  "box.contents": "Inside",
 } as const;
 
 export type TranslationKey = keyof typeof en;
@@ -294,6 +351,64 @@ const ar: Record<TranslationKey, string> = {
   "status.ready": "جاهز",
   "status.completed": "مكتمل",
   "status.cancelled": "ملغي",
+
+  "admin.role": "المدير",
+  "admin.nav.overview": "نظرة عامة",
+  "admin.nav.menu": "المنيو",
+  "admin.nav.inventory": "المخزون",
+  "admin.nav.waste": "الهدر",
+  "admin.nav.recipes": "الوصفات",
+  "admin.nav.reports": "التقارير",
+  "admin.nav.staff": "الموظفون",
+  "admin.nav.settings": "الإعدادات",
+
+  "admin.menu.tabProducts": "الأصناف",
+  "admin.menu.tabExtras": "الإضافات",
+  "admin.menu.addProduct": "إضافة صنف",
+  "admin.menu.addProductHint":
+    "اختر القسم. للصناديق حدد عدد القطع وما بداخلها.",
+  "admin.menu.name": "الاسم",
+  "admin.menu.category": "القسم",
+  "admin.menu.price": "السعر",
+  "admin.menu.pieceCount": "عدد القطع",
+  "admin.menu.contains": "يحتوي على",
+  "admin.menu.available": "متاح على نقطة البيع",
+  "admin.menu.create": "إنشاء الصنف",
+  "admin.menu.creating": "جاري الإنشاء...",
+  "admin.menu.created": "تم إنشاء الصنف",
+  "admin.menu.save": "حفظ",
+  "admin.menu.saving": "جاري الحفظ...",
+  "admin.menu.saved": "تم الحفظ",
+  "admin.menu.archive": "أرشفة",
+  "admin.menu.restore": "استعادة",
+  "admin.menu.archived": "مؤرشف",
+  "admin.menu.showArchived": "إظهار المؤرشف",
+  "admin.menu.noProducts": "لا توجد أصناف في هذه القائمة بعد.",
+  "admin.menu.productCount": "{count} أصناف",
+  "admin.menu.uncategorized": "بدون قسم",
+  "admin.menu.packOf": "علبة من {count}",
+
+  "admin.extras.title": "إضافات لكل الأصناف",
+  "admin.extras.hint":
+    "أنشئ الإضافة مرة واحدة. كل إضافة مفعّلة تظهر عند الضغط على أي صنف.",
+  "admin.extras.name": "اسم الإضافة",
+  "admin.extras.price": "السعر",
+  "admin.extras.create": "إنشاء إضافة",
+  "admin.extras.creating": "جاري الإنشاء...",
+  "admin.extras.empty": "لا توجد إضافات بعد.",
+  "admin.extras.active": "مفعّلة",
+  "admin.extras.save": "حفظ",
+  "admin.extras.saving": "جاري الحفظ...",
+  "admin.extras.current": "الحالي",
+  "admin.extras.sharedLabel": "إضافات مشتركة",
+
+  "box.title": "تكوين العلبة",
+  "box.pick": "اختر {count} قطع",
+  "box.selected": "{count} من {total}",
+  "box.add": "أضف العلبة",
+  "box.cancel": "إلغاء",
+  "box.empty": "لا يوجد شيء في هذا القسم.",
+  "box.contents": "المحتويات",
 };
 
 export const DICTIONARY: Record<Language, Record<TranslationKey, string>> = {

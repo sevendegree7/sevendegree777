@@ -14,11 +14,14 @@ export type Language = "en" | "ar";
 export const DEFAULT_THEME: ThemePreference = "system";
 export const DEFAULT_LANGUAGE: Language = "en";
 
-// arabic is a cashier feature for now. the kitchen board and admin are still
-// english only, so they must not be flipped into rtl by a till preference.
+// arabic covers the till, login, and admin. kitchen stays english for now.
 export function isBilingualPath(pathname: string): boolean {
   return (
-    pathname === "/pos" || pathname.startsWith("/pos/") || pathname === "/login"
+    pathname === "/pos" ||
+    pathname.startsWith("/pos/") ||
+    pathname === "/login" ||
+    pathname === "/admin" ||
+    pathname.startsWith("/admin/")
   );
 }
 
@@ -43,5 +46,5 @@ var dark=t==='dark'||(t!=='light'&&window.matchMedia('(prefers-color-scheme: dar
 d.dataset.theme=dark?'dark':'light';
 var l=localStorage.getItem(${JSON.stringify(LANGUAGE_KEY)})||${JSON.stringify(DEFAULT_LANGUAGE)};
 var p=location.pathname;
-if(l==='ar'&&(p==='/pos'||p.indexOf('/pos/')===0||p==='/login')){d.lang='ar';d.dir='rtl';}
+if(l==='ar'&&(p==='/pos'||p.indexOf('/pos/')===0||p==='/login'||p==='/admin'||p.indexOf('/admin/')===0)){d.lang='ar';d.dir='rtl';}
 }catch(e){}})();`;

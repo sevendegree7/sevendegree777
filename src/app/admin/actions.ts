@@ -47,25 +47,154 @@ function parseAmount(raw: string): number | null {
   return Number.isFinite(value) ? value : null;
 }
 
-// change price or availability on a product
-export async function updateProduct(input: {
-  productId: string;
+// create or update a sellable item. boxes need a pack size and a contents
+// category so the till knows how many flavors to ask for.
+export async function createProduct(input: {
+  name: string;
+  categoryId: string;
   basePrice: string;
   isAvailable: boolean;
+  pieceCount: string;
+  contentsCategoryId: string;
 }): Promise<ActionResult> {
   const { supabase, error } = await requireAdmin();
   if (error) return { ok: false, message: error };
+
+  const name = input.name.trim();
+  if (!name) return { ok: false, message: "enter a product name" };
+  if (!input.categoryId) {
+    return { ok: false, message: "pick a category" };
+  }
 
   const basePrice = parseAmount(input.basePrice);
   if (basePrice === null || basePrice < 0) {
     return { ok: false, message: "enter a price of zero or more" };
   }
 
+  const { data: category, error: categoryError } = await supabase
+    .from("categories")
+    .select("id, name")
+    .eq("id", input.categoryId)
+    .maybeSingle();
+
+  if (categoryError) return { ok: false, message: categoryError.message };
+  if (!category) return { ok: false, message: "category not found" };
+
+  const isBox = category.name.toLowerCase() === "boxes";
+  let pieceCount: number | null = null;
+  let contentsCategoryId: string | null = null;
+
+  if (isBox) {
+    const parsed = parseAmount(input.pieceCount);
+    if (parsed === null || !Number.isInteger(parsed) || parsed <= 0) {
+      return { ok: false, message: "enter how many pieces the box holds" };
+    }
+    if (!input.contentsCategoryId) {
+      return { ok: false, message: "pick what the box contains" };
+    }
+
+    pieceCount = parsed;
+    contentsCategoryId = input.contentsCategoryId;
+  }
+
+  const { data: existing } = await supabase
+    .from("products")
+    .select("sort_order")
+    .order("sort_order", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const sortOrder = (existing?.sort_order ?? 0) + 1;
+
+  const { data: created, error: insertError } = await supabase
+    .from("products")
+    .insert({
+      name,
+      category_id: input.categoryId,
+      base_price: basePrice,
+      is_available: input.isAvailable,
+      sort_order: sortOrder,
+      piece_count: pieceCount,
+      contents_category_id: contentsCategoryId,
+    })
+    .select("id")
+    .single();
+
+  if (insertError || !created) {
+    return { ok: false, message: insertError?.message ?? "could not create product" };
+  }
+
+  // finished-goods stock needs a row before the first delivery is logged
+  await supabase.from("product_stock").upsert(
+    { product_id: created.id },
+    { onConflict: "product_id" },
+  );
+
+  revalidatePath("/admin/menu");
+  revalidatePath("/admin/inventory");
+  revalidatePath("/pos");
+  revalidatePath("/menu");
+  return { ok: true, message: "product created" };
+}
+
+export async function updateProduct(input: {
+  productId: string;
+  name: string;
+  categoryId: string;
+  basePrice: string;
+  isAvailable: boolean;
+  pieceCount: string;
+  contentsCategoryId: string;
+}): Promise<ActionResult> {
+  const { supabase, error } = await requireAdmin();
+  if (error) return { ok: false, message: error };
+
+  const name = input.name.trim();
+  if (!name) return { ok: false, message: "enter a product name" };
+  if (!input.categoryId) {
+    return { ok: false, message: "pick a category" };
+  }
+
+  const basePrice = parseAmount(input.basePrice);
+  if (basePrice === null || basePrice < 0) {
+    return { ok: false, message: "enter a price of zero or more" };
+  }
+
+  const { data: category, error: categoryError } = await supabase
+    .from("categories")
+    .select("id, name")
+    .eq("id", input.categoryId)
+    .maybeSingle();
+
+  if (categoryError) return { ok: false, message: categoryError.message };
+  if (!category) return { ok: false, message: "category not found" };
+
+  const isBox = category.name.toLowerCase() === "boxes";
+  let pieceCount: number | null = null;
+  let contentsCategoryId: string | null = null;
+
+  if (isBox) {
+    const parsed = parseAmount(input.pieceCount);
+    if (parsed === null || !Number.isInteger(parsed) || parsed <= 0) {
+      return { ok: false, message: "enter how many pieces the box holds" };
+    }
+    if (!input.contentsCategoryId) {
+      return { ok: false, message: "pick what the box contains" };
+    }
+
+    pieceCount = parsed;
+    contentsCategoryId = input.contentsCategoryId;
+  }
+
   const { error: updateError } = await supabase
     .from("products")
     .update({
+      name,
+      category_id: input.categoryId,
       base_price: basePrice,
       is_available: input.isAvailable,
+      piece_count: pieceCount,
+      contents_category_id: contentsCategoryId,
     })
     .eq("id", input.productId);
 
@@ -75,7 +204,33 @@ export async function updateProduct(input: {
 
   revalidatePath("/admin/menu");
   revalidatePath("/pos");
+  revalidatePath("/menu");
   return { ok: true, message: "product saved" };
+}
+
+export async function archiveProduct(input: {
+  productId: string;
+  archive: boolean;
+}): Promise<ActionResult> {
+  const { supabase, error } = await requireAdmin();
+  if (error) return { ok: false, message: error };
+
+  const { error: updateError } = await supabase
+    .from("products")
+    .update({ is_available: !input.archive })
+    .eq("id", input.productId);
+
+  if (updateError) {
+    return { ok: false, message: updateError.message };
+  }
+
+  revalidatePath("/admin/menu");
+  revalidatePath("/pos");
+  revalidatePath("/menu");
+  return {
+    ok: true,
+    message: input.archive ? "product archived" : "product restored",
+  };
 }
 
 // one reusable extra, offered on every product while active.

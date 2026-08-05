@@ -167,6 +167,13 @@ function ReceiptPaper({
               </span>
               {showPrices ? <span>{formatMoney(line.lineTotal)}</span> : null}
             </div>
+            {line.boxContents.length > 0 ? (
+              <p
+                className={`ps-4 ${showPrices ? "text-xs text-neutral-700" : "text-sm font-semibold"}`}
+              >
+                {line.boxContents.join(", ")}
+              </p>
+            ) : null}
             {line.extras.length > 0 ? (
               <p
                 className={`ps-4 ${showPrices ? "text-xs text-neutral-700" : "text-sm font-semibold"}`}

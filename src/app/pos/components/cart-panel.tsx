@@ -82,6 +82,14 @@ export function CartPanel({
                 </span>
               </div>
 
+              {line.boxContents.length > 0 ? (
+                <p className="mt-1 text-sm text-muted">
+                  {line.boxContents
+                    .map((piece) => `${piece.quantity}× ${piece.name}`)
+                    .join(", ")}
+                </p>
+              ) : null}
+
               {line.selectedModifiers.length > 0 ? (
                 <p className="mt-1 text-sm text-muted">
                   {line.selectedModifiers

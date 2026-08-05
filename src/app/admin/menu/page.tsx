@@ -1,41 +1,47 @@
+import { Suspense } from "react";
+
 import { AdminShell } from "@/components/admin-shell";
 import { createClient } from "@/lib/supabase/server";
 
 import { ExtrasManager } from "./extras-manager";
-import { MenuEditor } from "./menu-editor";
+import { MenuTabs, ProductManager } from "./product-manager";
 
-export default async function AdminMenuPage() {
+export default async function AdminMenuPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ tab?: string }>;
+}) {
+  const params = await searchParams;
+  const tab = params.tab === "extras" ? "extras" : "products";
   const supabase = await createClient();
 
   const [productsResult, categoriesResult, extrasResult] = await Promise.all([
     supabase.from("products").select("*").order("sort_order"),
-    supabase.from("categories").select("id, name"),
+    supabase
+      .from("categories")
+      .select("*")
+      .order("sort_order"),
     supabase.from("modifiers").select("*").order("created_at"),
   ]);
 
-  const categoryNameById: Record<string, string> = {};
-  for (const category of categoriesResult.data ?? []) {
-    categoryNameById[category.id] = category.name;
-  }
+  const loadError =
+    productsResult.error ?? categoriesResult.error ?? extrasResult.error;
 
   return (
-    <AdminShell title="Menu">
-      <p className="mb-4 max-w-2xl text-sm text-muted">
-        Change prices, manage shared extras, and turn items on or off. Updates
-        reach the till on its next menu refresh.
-      </p>
-      {productsResult.error || extrasResult.error ? (
-        <p className="text-danger">
-          {productsResult.error?.message ?? extrasResult.error?.message}
-        </p>
+    <AdminShell titleKey="admin.nav.menu">
+      <Suspense fallback={null}>
+        <MenuTabs />
+      </Suspense>
+
+      {loadError ? (
+        <p className="text-danger">{loadError.message}</p>
+      ) : tab === "extras" ? (
+        <ExtrasManager extras={extrasResult.data ?? []} />
       ) : (
-        <>
-          <ExtrasManager extras={extrasResult.data ?? []} />
-          <MenuEditor
-            products={productsResult.data ?? []}
-            categoryNameById={categoryNameById}
-          />
-        </>
+        <ProductManager
+          products={productsResult.data ?? []}
+          categories={categoriesResult.data ?? []}
+        />
       )}
     </AdminShell>
   );
