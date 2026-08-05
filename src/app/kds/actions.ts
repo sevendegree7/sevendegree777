@@ -12,7 +12,15 @@ export type MoveStatusInput = {
 };
 
 export type MoveStatusResult =
-  | { ok: true; status: OrderStatus; changed: boolean }
+  | {
+      ok: true;
+      status: OrderStatus;
+      changed: boolean;
+      // the move went through but the stock did not come back with it. the
+      // ticket is still cancelled, so this is a note for the screen, not a
+      // failure.
+      stockWarning?: string;
+    }
   | { ok: false; message: string };
 
 // moves one ticket along the kitchen pipeline.
@@ -61,6 +69,32 @@ export async function moveOrderStatus(
   }
 
   if (updated) {
+    // this screen is the one that cancelled it, so this screen is the one that
+    // puts the ingredients back. only on `changed`: a screen whose tap lost the
+    // race never deducted anything to return, and the rpc refuses a second run
+    // anyway - `stock_deducted` is cleared in the same transaction that adds
+    // the stock.
+    if (updated.status === "cancelled") {
+      const { error: returnError } = await supabase.rpc(
+        "return_stock_for_order",
+        { p_order_id: input.orderId },
+      );
+
+      if (returnError) {
+        // the ticket is cancelled either way. saying it out loud beats a
+        // silent drift, and admin can restock by hand from /admin/inventory.
+        console.error("stock return failed", returnError.message);
+
+        return {
+          ok: true,
+          status: updated.status,
+          changed: true,
+          stockWarning:
+            "the order was cancelled, but the stock did not go back. fix it in admin > inventory.",
+        };
+      }
+    }
+
     return { ok: true, status: updated.status, changed: true };
   }
 

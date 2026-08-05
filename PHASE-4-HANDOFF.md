@@ -277,36 +277,85 @@ do not go back to a per-tap uuid.
 
 ---
 
-## 12) known gap: stock is not returned on a late cancel
+## 12) stock comes back on a cancel (built — step 7)
+
+> **needs `supabase/phase4.sql` run on the project.** until it is, voiding a
+> ticket cancels it and says on screen that the stock did not go back. that is
+> the honest failure, not the fixed one — run the sql.
 
 phase 3 pulls raw materials in `createOrder` right after the lines are written
-(`deduct_stock_for_order`, guarded by `orders.stock_deducted`).
+(`deduct_stock_for_order`, guarded by `orders.stock_deducted`). nothing put
+them back, so a cancelled order quietly lost the ingredients it never used.
 
-**nothing returns that stock if the order is cancelled afterwards.**
+the old note here said the gap could only be hit by cancelling a row by hand in
+the dashboard, because nothing in the ui could cancel at all. that was true, and
+it was also the wrong place to leave it: a truck needs to void a sale — the
+customer walks off, or it was rung up wrong — and the answer cannot be "open the
+supabase dashboard".
 
-where it stands today:
+### what it does
 
-- the kds cannot cancel: `ALLOWED_MOVES` in `src/lib/kds/orders.ts` only walks
-  `pending → preparing → ready → completed` (plus one step back). there is no
-  `cancelled` move anywhere in the ui
-- the pos only writes `cancelled` when the **order lines fail to insert** — that
-  path returns before the deduct rpc runs, so nothing was pulled. safe
-- so the gap can only be hit by cancelling a row **by hand** in the supabase
-  dashboard, and today that silently loses stock
+- **`return_stock_for_order(p_order_id uuid)`** in `supabase/phase4.sql`, the
+  mirror of the deduct. two guards, and both matter:
+  - the order has to **actually be cancelled**. without that check it is a way
+    to add stock to a live sale, and the count drifts up every call
+  - `stock_deducted` has to be true, and is set false **in the same
+    transaction**. so a double tap, a retry, or two screens voiding the same
+    ticket can only return the stock once
+  - the arithmetic is `current_stock = current_stock + n` inside postgres,
+    never read-then-write — that race is already logged from the restock bug
+- **`cancelled` is now an allowed move** from `pending`, `preparing` and
+  `ready` in `ALLOWED_MOVES`. it is not a step along the pipeline, it is a jump
+  off it, which is why it is on every row
+- **the server action cancels first, then returns the stock**, and only on the
+  tap that actually changed the row. a screen that lost the race never deducted
+  anything to give back
+- **a void button on each kitchen card**: small, grey and on its own line, well
+  away from the big `mark ready` button that gets tapped with the side of a
+  thumb all day. it asks first, on the card itself rather than in a dialog over
+  the board, and the confirm button names the ticket (`void #76b93f62`) so you
+  cannot void the wrong one
 
-if you add a cancel button (phase 4 or later), it must not be a plain status
-update. it needs a `return_stock_for_order(order_id)` rpc that:
+### the offline trap
 
-- only acts when `stock_deducted = true`
-- adds each recipe/modifier quantity back inside postgres
-  (`current_stock = current_stock + n`, never read-then-write — that race is
-  already logged from the restock bug)
-- sets `stock_deducted = false` in the same statement so a double tap cannot
-  return the stock twice
-- lives in `supabase/phase4.sql`
+a sale voided on the tablet **before it was ever uploaded** was the sharp edge
+here. left alone, the sync worker would have uploaded it as a fresh `pending`
+order, pulled the ingredients for it, and then tried to walk it to `cancelled` —
+a status `catchUp` could not reach, so it would have failed *after* taking the
+stock.
 
-until then, a hand-cancelled order is fixed by restocking on
-`/admin/inventory`.
+so `pushOne` drops it instead: never uploaded and cancelled means it never
+reached the server at all — no row to cancel, no stock to return, no money to
+account for. and `catchUp` now handles a `cancelled` target as one direct move
+rather than a walk, for the rarer case where the upload landed first.
+
+### if the rpc is missing
+
+`supabase.rpc` fails, the ticket is **still cancelled**, and the board says:
+
+> the order was cancelled, but the stock did not go back. fix it in admin >
+> inventory.
+
+that is deliberate. the alternative — refusing the void because the stock call
+failed — leaves a ticket the kitchen keeps making.
+
+### how it was tested
+
+against a production build, with the rpc **not yet installed**, so the degraded
+path was exercised for real:
+
+- voided a cloud ticket → cancelled, off the board, warning shown, and the
+  server log said `Could not find the function public.return_stock_for_order`
+- took an offline cash sale (`turkish coffee`, 12 g coffee), voided it offline,
+  then brought the connection back: the local record was **dropped**, no new
+  ticket appeared, and stock went `1928 → 1916` — one deduct for the sale that
+  uploaded, none for the one that was voided. the trap would have made it 1904
+
+the stock actually coming *back* on a cloud void could not be verified here:
+applying the sql needs the supabase dashboard, and this machine has only the
+anon key and no docker for a local supabase. **verify that one after running
+`supabase/phase4.sql`**: note an ingredient, sell the product, void the ticket,
+and the number should return to where it started.
 
 ---
 
@@ -906,7 +955,8 @@ npm run start -- -p 3001
 ```
 
 you also need `.env.local` from the owner (supabase url + anon key). never
-commit it.
+commit it. and `supabase/phase4.sql` has to have been run on the project — one
+function, and voiding a ticket does not give the stock back without it (§12).
 
 ### testing offline without unplugging anything
 
@@ -950,13 +1000,14 @@ things that will waste your time if you do not know them:
 
 in the order i would do it:
 
-1. **phase 5: deploy to vercel.** everything above only reaches a real tablet
+1. **run `supabase/phase4.sql`** on the project. it is one function and it is
+   what makes a void give the ingredients back (§12). nothing else is waiting
+   on it, but every void until then loses stock and says so
+2. **phase 5: deploy to vercel.** everything above only reaches a real tablet
    over https — service workers do not run on a plain `http://192.168.x.x` box.
    this is the step that makes the offline work usable on the truck
-2. **a dry run on the actual tablet**, on truck wifi. all of phase 4 was
+3. **a dry run on the actual tablet**, on truck wifi. all of phase 4 was
    verified in a desktop browser against a production build
-3. **stock is not returned on a late cancel** (§12). the sql for it is sketched
-   there and belongs in `supabase/phase4.sql`
 4. **the ticket number changes on upload** (§18). the fix is letting
    `createOrder` accept the local order id — a browser choosing a primary key,
    worth doing deliberately

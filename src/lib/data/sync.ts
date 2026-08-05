@@ -45,8 +45,9 @@ const RANK: Record<OrderStatus, number> = {
   preparing: 1,
   ready: 2,
   completed: 3,
-  // not a step on the way anywhere. a ticket that came back cancelled has
-  // nothing left to catch up.
+  // not a step on the way anywhere - `catchUp` deals with it before the walk
+  // starts. it sits above the rest so that if it ever did reach the loop, the
+  // loop would refuse to walk a cancelled ticket forward.
   cancelled: 4,
 };
 
@@ -89,6 +90,27 @@ async function catchUp(
   orderId: string,
   target: OrderStatus,
 ): Promise<string | null> {
+  // cancelled is not a step along the pipeline, so it is not walked to - it is
+  // one move off it. that move is also the thing that gives back the stock the
+  // upload just pulled, which is why this cannot be left to the loop below.
+  if (target === "cancelled") {
+    const result = await getCloudSource().moveStatus({
+      orderId,
+      from: "pending",
+      to: "cancelled",
+    });
+
+    if (!result.ok) {
+      return result.message;
+    }
+
+    // a kitchen screen got to the fresh upload before this did. say so rather
+    // than report a cancel that did not happen - the stock is still out.
+    return result.status === "cancelled"
+      ? null
+      : `the sale went up, but the ticket is on ${result.status} and was not cancelled`;
+  }
+
   let current: OrderStatus = "pending";
 
   for (let hop = 0; hop < MAX_HOPS && RANK[current] < RANK[target]; hop += 1) {
@@ -120,6 +142,15 @@ async function catchUp(
 // this tablet has, then let go of the local record.
 async function pushOne(record: LocalOrder, clientId: string): Promise<boolean> {
   let orderId = record.syncedOrderId;
+
+  // a sale cancelled on the tablet before it ever went up never reached the
+  // server at all: no row to cancel, no stock to return, no money to account
+  // for. uploading it now would create a pending ticket, pull the ingredients
+  // for it, and then have to cancel itself - so let it go instead.
+  if (orderId === null && record.order.status === "cancelled") {
+    removeLocalOrder(clientId);
+    return true;
+  }
 
   if (orderId === null) {
     const lines = toLines(record.order);

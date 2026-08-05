@@ -70,7 +70,9 @@ phase 4 is done and merged — the truck can now trade with no internet:
 - when the connection returns the sales upload themselves, once — a repeat of
   the same sale cannot double-charge, `orders.client_id` sees to that
 - the tablet opens a shift with no internet, from a note it wrote while online
-- built in six merged prs, each tested live against a production build:
+- the kitchen can void a ticket, and the raw materials go back on the shelf
+  (§12) — this one needs `supabase/phase4.sql` run on the project
+- built in small merged prs, each tested live against a production build:
   `PHASE-4-HANDOFF.md` §11–§20
 
 details, gotchas and the live test results: `PHASE-2-HANDOFF.md`.
@@ -83,7 +85,6 @@ not done yet:
   reaches a real tablet over https
 - a dry run on the actual tablet on truck wifi
 - thermal printing
-- reversing stock on late cancels (`PHASE-4-HANDOFF.md` §12)
 - deeper food-cost analytics
 - automated tests — there are none; everything so far was checked by running it
 
@@ -272,9 +273,9 @@ full details: **`PHASE-4-HANDOFF.md`** — §13 for the decision that shaped it,
   `orders.client_id`, through the same `createOrder` as an online sale, so
   stock deduct stays one path — §18
 - the shift opens with no internet, from a note written while online — §19
+- voiding a ticket puts the raw materials back — §12
 
-still open from this phase: touch qa on the real tablet, reprint, and the
-late-cancel stock gap in §12.
+still open from this phase: touch qa on the real tablet, and reprint.
 
 ### phase 5 — cloud go-live (next)
 - vercel deploy + prod env
@@ -345,7 +346,9 @@ printing, and touch qa on the real tablet.
 1. `git pull origin main`
 2. get `.env.local` from the owner (shared supabase) — it is not in the repo
 3. run `supabase/phase3.sql` + `phase3-seed.sql` + `public-menu.sql` +
-   `phase3-fixes.sql` on the project if they have not been run
+   `phase3-fixes.sql` on the project if they have not been run, and
+   `supabase/phase4.sql` — that last one is what makes a voided ticket give its
+   ingredients back, and voids lose stock until it is in
 4. `npm install`, then `npm run dev` and smoke test: admin, one sale, the stock
    drop, the kitchen board
 5. read `PHASE-4-HANDOFF.md` §13 (the one-tablet decision) and §20 (what runs

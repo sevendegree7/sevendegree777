@@ -292,6 +292,12 @@ export function KdsScreen({ initialOrders }: KdsScreenProps) {
           return;
         }
 
+        // the ticket moved but the stock did not follow it back. the move
+        // still stands, so this is said and not treated as a failure.
+        if (result.stockWarning) {
+          setErrorText(result.stockWarning);
+        }
+
         // apply straight away, the realtime event confirms it a moment later
         const status = result.status;
 

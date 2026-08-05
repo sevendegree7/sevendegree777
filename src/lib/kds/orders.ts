@@ -32,11 +32,17 @@ export const PREVIOUS_STATUS: Partial<Record<KitchenStatus, KitchenStatus>> = {
   ready: "preparing",
 };
 
-// every move the kds is allowed to make, checked again on the server
+// every move the kds is allowed to make, checked again on the server.
+//
+// `cancelled` is on every row and is not a step along the pipeline - it is a
+// jump off it. the customer walks away, or the ticket was rung up wrong, and
+// that can happen while the ticket is waiting, being made, or sitting ready.
+// the server turns this move into two things, not one: the status, and the
+// raw materials going back on the shelf.
 export const ALLOWED_MOVES: Record<KitchenStatus, OrderStatus[]> = {
-  pending: ["preparing"],
-  preparing: ["ready", "pending"],
-  ready: ["completed", "preparing"],
+  pending: ["preparing", "cancelled"],
+  preparing: ["ready", "pending", "cancelled"],
+  ready: ["completed", "preparing", "cancelled"],
 };
 
 export function canMove(from: OrderStatus, to: OrderStatus): boolean {

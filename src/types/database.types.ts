@@ -353,6 +353,10 @@ export type Database = {
         Args: { p_order_id: string };
         Returns: Json;
       };
+      return_stock_for_order: {
+        Args: { p_order_id: string };
+        Returns: Json;
+      };
       restock_inventory_item: {
         Args: { p_item_id: string; p_add_quantity: number };
         Returns: Json;

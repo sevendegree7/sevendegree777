@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+
 import {
   NEXT_STATUS,
   NEXT_STATUS_LABEL,
@@ -49,6 +51,12 @@ export function OrderCard({
   const late = waited !== null && waited >= LATE_MINUTES;
   const previous = PREVIOUS_STATUS[status];
   const itemCount = order.items.reduce((sum, item) => sum + item.quantity, 0);
+
+  // voiding is the one move on this card that cannot be undone, so it asks
+  // first. two taps on the card itself and not a dialog over the board: the
+  // kitchen has flour on its hands and a modal that covers the other tickets
+  // is worse than the mis-tap it prevents.
+  const [confirmingVoid, setConfirmingVoid] = useState(false);
 
   return (
     <article className="flex flex-col gap-3 rounded-2xl border border-stone-200 bg-white p-4 shadow-sm">
@@ -136,27 +144,70 @@ export function OrderCard({
         </p>
       ) : null}
 
-      <div className="flex gap-2">
-        {previous ? (
+      {confirmingVoid ? (
+        <div className="flex flex-col gap-2 rounded-xl bg-red-50 p-3">
+          <p className="text-sm font-medium text-red-900">
+            {local
+              ? "void this ticket? this sale is only on this tablet, so it goes away for good."
+              : "void this ticket? the ingredients go back on the shelf."}
+          </p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setConfirmingVoid(false)}
+              className="flex-1 rounded-xl border border-stone-300 bg-white px-4 py-4 text-base text-stone-700"
+            >
+              keep it
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setConfirmingVoid(false);
+                onMove("cancelled");
+              }}
+              disabled={busy}
+              className="flex-1 rounded-xl bg-red-700 px-4 py-4 text-base font-medium text-white disabled:opacity-50"
+            >
+              void #{ticketNumber(order.id)}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="flex gap-2">
+            {previous ? (
+              <button
+                type="button"
+                onClick={() => onMove(previous)}
+                disabled={busy}
+                className="rounded-xl border border-stone-300 px-4 py-4 text-base text-stone-600 disabled:opacity-50"
+              >
+                undo
+              </button>
+            ) : null}
+
+            <button
+              type="button"
+              onClick={() => onMove(NEXT_STATUS[status])}
+              disabled={busy}
+              className="flex-1 rounded-xl bg-stone-900 px-4 py-4 text-lg font-medium text-white disabled:opacity-50"
+            >
+              {busy ? "saving..." : NEXT_STATUS_LABEL[status]}
+            </button>
+          </div>
+
+          {/* kept small, quiet and on its own line. the row above is tapped all
+              day with the side of a thumb, and this one does not come back. */}
           <button
             type="button"
-            onClick={() => onMove(previous)}
+            onClick={() => setConfirmingVoid(true)}
             disabled={busy}
-            className="rounded-xl border border-stone-300 px-4 py-4 text-base text-stone-600 disabled:opacity-50"
+            className="self-start rounded-lg px-2 py-1 text-sm text-stone-400 underline underline-offset-4 disabled:opacity-50"
           >
-            undo
+            void
           </button>
-        ) : null}
-
-        <button
-          type="button"
-          onClick={() => onMove(NEXT_STATUS[status])}
-          disabled={busy}
-          className="flex-1 rounded-xl bg-stone-900 px-4 py-4 text-lg font-medium text-white disabled:opacity-50"
-        >
-          {busy ? "saving..." : NEXT_STATUS_LABEL[status]}
-        </button>
-      </div>
+        </>
+      )}
     </article>
   );
 }
