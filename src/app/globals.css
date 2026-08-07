@@ -184,14 +184,53 @@ html.measuring-receipt .receipt-paper {
     visibility: visible;
   }
 
-  /* an admin report on an office printer, not a receipt on a roll.
-     hiding the nav and the filter form leaves their space behind - they are
-     invisible, not gone - so the sheet is lifted out of the flow and put at
-     the top of the page rather than below a hand's width of nothing. */
+  /* invisible is not gone.
+     the rule above only stops the till from putting ink on the paper - every
+     hidden element still stands in the flow taking up its full height, and on
+     the till that height is three pages of product grid sitting in front of
+     the receipt. that is where the blank sheets came from.
+     so anything that is not the paper, not inside it, and not an ancestor
+     holding it up is taken out of the flow completely. the ancestors survive
+     on :has() - they are what keeps the paper attached to the document at all.
+     the visibility rules stay as they are: a browser without :has() ignores
+     this block and still prints a correct receipt, just with the old blank
+     sheets in front of it. */
+  body
+    :not(:has(.receipt-paper, .report-paper)):not(
+      .receipt-paper,
+      .report-paper,
+      .receipt-paper *,
+      .report-paper *
+    ) {
+    display: none !important;
+  }
+
+  /* and the ancestors that are left have to get out of the way too.
+     they are the app's furniture: a full-screen modal pinned to the viewport
+     and centring its contents, a main with min-h-screen, sections with their
+     own padding. on screen that furniture is the layout. on a roll it is a
+     box the height of a tablet with the receipt floated in the middle of it,
+     clipped at both ends - so every one of them is flattened back to a plain
+     block that is exactly as tall as what it holds. */
+  body:has(.receipt-paper, .report-paper),
+  body :has(.receipt-paper, .report-paper) {
+    display: block !important;
+    position: static !important;
+    inset: auto !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    max-width: none !important;
+    overflow: visible !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  /* an admin report on an office printer, not a receipt on a roll */
   .report-paper {
-    position: absolute;
-    inset-block-start: 0;
-    inset-inline-start: 0;
     width: 100%;
     background: #fff;
     color: #000;
