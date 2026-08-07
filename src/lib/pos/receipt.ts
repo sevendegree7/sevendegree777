@@ -33,8 +33,25 @@ export type Receipt = {
   takenAt: string;
   orderType: OrderType;
   paymentMethod: PaymentMethod | null;
+  // who rang it. printed so a complaint about this piece of paper can be put
+  // to the right person instead of to whoever happens to be on shift.
+  cashier: string | null;
+  // the customer, when they gave their details. printed so a bag on the counter
+  // can be called by name, and so a delivery has a number on the paper.
+  customerName: string | null;
+  customerPhone: string | null;
   lines: ReceiptLine[];
   itemCount: number;
+  // the tax that was charged on this sale, read off the order rather than
+  // recalculated. the rate the truck charges today has nothing to do with the
+  // rate this customer paid, and the paper has to say what they paid.
+  // null when there was no tax, which is every sale before the tax migration.
+  tax: {
+    label: string;
+    rate: number;
+    amount: number;
+    subtotal: number;
+  } | null;
   // what the customer was charged. read off the order, not re-added from the
   // lines - this is the number the till and the db agree on.
   total: number;
@@ -69,6 +86,30 @@ export function receiptLineTotal(unitPrice: number, quantity: number): number {
   return toPounds(toPiastres(unitPrice) * quantity);
 }
 
+// the tax block, or nothing at all.
+//
+// nothing is the common case and the important one: a sale rung before tax
+// existed, or rung while it was switched off, must print exactly the paper it
+// always printed. a "TAX 0.00" line on a receipt is noise that invites a
+// question nobody at the counter can answer.
+function receiptTax(order: KitchenOrder): Receipt["tax"] {
+  const amount = Number(order.tax_amount ?? 0);
+
+  if (!Number.isFinite(amount) || amount <= 0) return null;
+
+  const total = Number(order.total_amount);
+  const subtotal = Number(order.subtotal_amount);
+
+  return {
+    label: order.tax_label?.trim() || "Tax",
+    rate: Number(order.tax_rate ?? 0),
+    amount,
+    // fall back to arithmetic if the column never got filled in. the two agree
+    // on every sale the till writes - this is only for a row edited by hand.
+    subtotal: Number.isFinite(subtotal) ? subtotal : total - amount,
+  };
+}
+
 export function buildReceipt(
   order: KitchenOrder,
   options: { replaces?: string | null } = {},
@@ -95,8 +136,14 @@ export function buildReceipt(
     takenAt: formatTruckTime(order.created_at),
     orderType: order.order_type,
     paymentMethod: order.payment_method,
+    // blank on sales taken before this column existed. an empty line is left
+    // off the paper rather than printed as "Served by -".
+    cashier: order.created_by_name?.trim() || null,
+    customerName: order.customer_name?.trim() || null,
+    customerPhone: order.customer_phone?.trim() || null,
     lines,
     itemCount: lines.reduce((sum, line) => sum + line.quantity, 0),
+    tax: receiptTax(order),
     total: Number(order.total_amount),
     notes: order.notes,
     replaces: options.replaces ?? null,

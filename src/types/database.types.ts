@@ -94,12 +94,35 @@ export type Order = {
   id: string;
   // used later for offline sync
   client_id: string | null;
+  // what the customer paid, tax and all. every report, shift count and drawer
+  // reconciliation sums this one column and none of them need to know whether
+  // there was tax in it.
   total_amount: number;
+  // the tax snapshot. what was charged on THIS sale, frozen at checkout, so a
+  // rate the owner changes next month cannot re-price a receipt a customer is
+  // already holding. same reason order_items.product_name is a copy.
+  // optional: sales rung before the tax migration do not carry them.
+  subtotal_amount?: number | null;
+  tax_amount?: number | null;
+  tax_rate?: number | null;
+  tax_label?: string | null;
   payment_method: PaymentMethod | null;
   order_type: OrderType;
   status: OrderStatus;
   notes: string | null;
   created_by: string | null;
+  // the cashier's name as it stood when the sale was rung. snapshotted like
+  // order_items.product_name so an old receipt still names the right person
+  // after a rename, and so an offline receipt can print it with no join.
+  // optional like the ticket fields: sales already sitting on a tablet from
+  // before this column existed do not have it.
+  created_by_name?: string | null;
+  // the till session this sale belongs to. null on sales rung before shifts
+  // existed, and on a sale that reached the tablet with no shift open.
+  shift_id?: string | null;
+  // what the customer gave, if they gave it. both optional - see the migration
+  customer_name?: string | null;
+  customer_phone?: string | null;
   // true after bom deduct ran for this order
   stock_deducted: boolean;
   // visible number resets every Egypt business day
@@ -109,13 +132,43 @@ export type Order = {
   updated_at: string;
 };
 
+// one person's turn on the till, from taking the drawer to counting it back
+export type Shift = {
+  id: string;
+  opened_by: string | null;
+  opened_by_name: string;
+  opened_at: string;
+  closed_by: string | null;
+  closed_by_name: string | null;
+  closed_at: string | null;
+  opening_float: number;
+  // null until the shift is closed, so "closed without counting" is its own
+  // state rather than looking like a drawer counted at zero
+  counted_cash: number | null;
+  notes: string | null;
+  created_at: string;
+};
+
 export type InventoryMode = "finished_goods" | "ingredients";
+
+// added: menu prices are before tax and it goes on top of the bill.
+// included: menu prices already contain it and the receipt shows the split.
+export type TaxMode = "added" | "included";
 
 export type AppSettings = {
   id: string;
   kds_enabled: boolean;
   inventory_mode: InventoryMode;
   receipt_copies: number;
+  // the live tax rule - what the NEXT sale is charged. what a sale that has
+  // already happened was charged lives on the order itself. optional because
+  // the till has to keep ringing against a database where the tax migration
+  // has not been applied yet.
+  tax_enabled?: boolean;
+  tax_label?: string;
+  // percent, not a fraction. 14 means 14%.
+  tax_rate?: number;
+  tax_mode?: TaxMode;
   updated_at: string;
 };
 
@@ -272,11 +325,19 @@ export type Database = {
           id?: string;
           client_id?: string | null;
           total_amount?: number;
+          subtotal_amount?: number | null;
+          tax_amount?: number | null;
+          tax_rate?: number | null;
+          tax_label?: string | null;
           payment_method?: PaymentMethod | null;
           order_type?: OrderType;
           status?: OrderStatus;
           notes?: string | null;
           created_by?: string | null;
+          created_by_name?: string | null;
+          shift_id?: string | null;
+          customer_name?: string | null;
+          customer_phone?: string | null;
           stock_deducted?: boolean;
           ticket_date?: string;
           ticket_number?: number;
@@ -287,11 +348,19 @@ export type Database = {
           id?: string;
           client_id?: string | null;
           total_amount?: number;
+          subtotal_amount?: number | null;
+          tax_amount?: number | null;
+          tax_rate?: number | null;
+          tax_label?: string | null;
           payment_method?: PaymentMethod | null;
           order_type?: OrderType;
           status?: OrderStatus;
           notes?: string | null;
           created_by?: string | null;
+          created_by_name?: string | null;
+          shift_id?: string | null;
+          customer_name?: string | null;
+          customer_phone?: string | null;
           stock_deducted?: boolean;
           ticket_date?: string;
           ticket_number?: number;
@@ -406,6 +475,36 @@ export type Database = {
         };
         Relationships: [];
       };
+      shifts: {
+        Row: Shift;
+        Insert: {
+          id?: string;
+          opened_by?: string | null;
+          opened_by_name: string;
+          opened_at?: string;
+          closed_by?: string | null;
+          closed_by_name?: string | null;
+          closed_at?: string | null;
+          opening_float?: number;
+          counted_cash?: number | null;
+          notes?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          opened_by?: string | null;
+          opened_by_name?: string;
+          opened_at?: string;
+          closed_by?: string | null;
+          closed_by_name?: string | null;
+          closed_at?: string | null;
+          opening_float?: number;
+          counted_cash?: number | null;
+          notes?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
       app_settings: {
         Row: AppSettings;
         Insert: {
@@ -413,6 +512,10 @@ export type Database = {
           kds_enabled?: boolean;
           inventory_mode?: InventoryMode;
           receipt_copies?: number;
+          tax_enabled?: boolean;
+          tax_label?: string;
+          tax_rate?: number;
+          tax_mode?: TaxMode;
           updated_at?: string;
         };
         Update: {
@@ -420,6 +523,10 @@ export type Database = {
           kds_enabled?: boolean;
           inventory_mode?: InventoryMode;
           receipt_copies?: number;
+          tax_enabled?: boolean;
+          tax_label?: string;
+          tax_rate?: number;
+          tax_mode?: TaxMode;
           updated_at?: string;
         };
         Relationships: [];

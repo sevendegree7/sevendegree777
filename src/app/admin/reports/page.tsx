@@ -2,27 +2,43 @@ import Link from "next/link";
 
 import { AdminShell } from "@/components/admin-shell";
 import { formatMoney } from "@/lib/pos/money";
+import { formatTruckTime } from "@/lib/pos/receipt";
 import {
   buildReportSummary,
   periodDays,
 } from "@/lib/reports/analytics";
-import { startOfTruckDayIso } from "@/lib/reports/dates";
+import {
+  startOfTruckDayIso,
+  truckDateRange,
+  truckDayKey,
+} from "@/lib/reports/dates";
 import { createClient } from "@/lib/supabase/server";
 
 import { HourBars, HorizontalBars, VerticalBars } from "./charts";
+import { PrintReportButton } from "./print-button";
 
 export default async function AdminReportsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ cashier?: string; period?: string }>;
+  searchParams: Promise<{
+    cashier?: string;
+    period?: string;
+    from?: string;
+    to?: string;
+  }>;
 }) {
   const params = await searchParams;
   const selectedCashier = params.cashier ?? "";
-  const period = ["today", "7", "30", "90"].includes(params.period ?? "")
-    ? (params.period as string)
-    : "30";
-  const daysAgo = periodDays(period);
-  const since = startOfTruckDayIso(daysAgo);
+  // an explicit range wins over the chips. a junk or half-filled one is simply
+  // ignored, so a mistyped date shows the usual 30 days rather than nothing.
+  const range = truckDateRange(params.from, params.to);
+  const period = range
+    ? "custom"
+    : ["today", "7", "30", "90"].includes(params.period ?? "")
+      ? (params.period as string)
+      : "30";
+  const since = range ? range.since : startOfTruckDayIso(periodDays(period));
+  const today = truckDayKey(new Date());
 
   const supabase = await createClient();
 
@@ -41,6 +57,12 @@ export default async function AdminReportsPage({
     .gte("created_at", since)
     .eq("status", "cancelled");
 
+  // only a custom range has a far end. the chips all run up to now.
+  if (range) {
+    ordersQuery = ordersQuery.lt("created_at", range.until);
+    cancelledQuery = cancelledQuery.lt("created_at", range.until);
+  }
+
   if (selectedCashier) {
     ordersQuery = ordersQuery.eq("created_by", selectedCashier);
     cancelledQuery = cancelledQuery.eq("created_by", selectedCashier);
@@ -53,10 +75,14 @@ export default async function AdminReportsPage({
   ] = await Promise.all([
     ordersQuery,
     cancelledQuery,
+    // everyone who can ring a sale, not just the `cashier` role. the owner
+    // takes orders too, and filtering this list to cashiers left their tickets
+    // falling back to the generic "Cashier" label in `analytics.ts` - so two
+    // different people read as one person in the takings.
     supabase
       .from("profiles")
       .select("id, name, is_active")
-      .eq("role", "cashier")
+      .in("role", ["cashier", "admin"])
       .order("name"),
   ]);
 
@@ -83,8 +109,11 @@ export default async function AdminReportsPage({
     cashierNames,
   });
 
-  const periodLabel =
-    period === "today"
+  const periodLabel = range
+    ? range.from === range.to
+      ? range.from
+      : `${range.from} → ${range.to}`
+    : period === "today"
       ? "Today"
       : period === "7"
         ? "Last 7 days"
@@ -101,12 +130,13 @@ export default async function AdminReportsPage({
 
   return (
     <AdminShell title="Reports">
-      <p className="mb-4 max-w-2xl text-sm text-muted">
+      <p className="print-hide mb-4 max-w-2xl text-sm text-muted">
         Sales for the truck day in Cairo time. Cancelled tickets stay out of
-        revenue and show as their own count.
+        revenue and show as their own count. Pick a chip for a quick look, or
+        set both dates for an exact range — both days are included.
       </p>
 
-      <div className="mb-4 flex flex-wrap gap-2">
+      <div className="print-hide mb-4 flex flex-wrap gap-2">
         {periods.map((option) => {
           const href = `/admin/reports?period=${option.id}${
             selectedCashier ? `&cashier=${selectedCashier}` : ""
@@ -129,9 +159,32 @@ export default async function AdminReportsPage({
         })}
       </div>
 
-      <form className="mb-6 flex max-w-md flex-col gap-3 sm:flex-row sm:items-end">
-        <input type="hidden" name="period" value={period} />
-        <label className="flex-1 text-sm">
+      {/* one form for the range and the cashier, so the owner picks both and
+          presses once. leaving the two dates empty falls back to the chip
+          above, which is why they carry no default. */}
+      <form className="print-hide mb-6 grid max-w-3xl gap-3 sm:grid-cols-[1fr_1fr_1fr_auto] sm:items-end">
+        <input type="hidden" name="period" value={range ? "30" : period} />
+        <label className="text-sm">
+          From
+          <input
+            type="date"
+            name="from"
+            defaultValue={range?.from ?? ""}
+            max={today}
+            className="mt-1 w-full rounded-xl border border-line bg-raised px-3 py-3"
+          />
+        </label>
+        <label className="text-sm">
+          To
+          <input
+            type="date"
+            name="to"
+            defaultValue={range?.to ?? ""}
+            max={today}
+            className="mt-1 w-full rounded-xl border border-line bg-raised px-3 py-3"
+          />
+        </label>
+        <label className="text-sm">
           Cashier
           <select
             name="cashier"
@@ -147,18 +200,40 @@ export default async function AdminReportsPage({
             ))}
           </select>
         </label>
-        <button
-          type="submit"
-          className="min-h-12 rounded-xl bg-navy px-5 py-3 text-sm font-semibold text-cream dark:bg-accent-surface dark:text-accent-ink"
-        >
-          Filter
-        </button>
+        <div className="flex gap-3">
+          <button
+            type="submit"
+            className="min-h-12 flex-1 rounded-xl bg-navy px-5 py-3 text-sm font-semibold text-cream dark:bg-accent-surface dark:text-accent-ink"
+          >
+            Filter
+          </button>
+          <PrintReportButton label="Print" />
+        </div>
       </form>
 
       {error ? (
         <p className="text-danger">{error.message}</p>
       ) : (
-        <div className="space-y-6">
+        <div className="report-paper space-y-6">
+          {/* only on paper. a printed sheet has none of the context the screen
+              has - no nav saying which truck, no chips saying which days - so
+              it carries its own heading or it is a page of loose numbers. */}
+          <div className="hidden print:block">
+            <p className="font-display text-xl font-semibold">
+              Seven Degrees — Sales report
+            </p>
+            <p className="mt-1 text-sm">
+              {periodLabel}
+              {selectedCashier
+                ? ` · ${cashierNames[selectedCashier] ?? "one cashier"}`
+                : " · all cashiers"}
+            </p>
+            <p className="text-sm">
+              Generated {formatTruckTime(new Date().toISOString())} (Cairo)
+            </p>
+            <hr className="mt-3 border-black/30" />
+          </div>
+
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <Kpi
               label={`${periodLabel} sales`}

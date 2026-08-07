@@ -33,6 +33,10 @@ type OrderHistoryProps = {
   onEdit: (order: KitchenOrder) => void;
   // an edit needs the server, because the old ticket lives there
   offline: boolean;
+  // admin only. voiding a sale and editing one into a cheaper one are the two
+  // ways a till gets skimmed, so a cashier gets neither button. the server
+  // refuses both as well - this is so nobody is offered a button that says no.
+  canVoid: boolean;
 };
 
 // what the cashier is told a ticket is doing right now
@@ -51,7 +55,12 @@ const STATUS_STYLE: Record<OrderStatus, string> = {
 // the de-duplicating, so a sale that has been uploaded is shown once and not
 // twice - and the same call means the till and the kitchen can never disagree
 // about which copy of a sale is the real one.
-export function OrderHistory({ onClose, onEdit, offline }: OrderHistoryProps) {
+export function OrderHistory({
+  onClose,
+  onEdit,
+  offline,
+  canVoid,
+}: OrderHistoryProps) {
   const [cloudOrders, setCloudOrders] = useState<KitchenOrder[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -152,6 +161,15 @@ export function OrderHistory({ onClose, onEdit, offline }: OrderHistoryProps) {
           </p>
         ) : null}
 
+        {/* said once, at the top, rather than left as an absence. a cashier
+            looking for a Cancel button that is not there will tap the row,
+            tap it again, and then ask whether the tablet is broken. */}
+        {!canVoid ? (
+          <p className="mt-4 rounded-xl bg-sunken px-4 py-3 text-sm text-muted">
+            {t("history.adminOnly")}
+          </p>
+        ) : null}
+
         {loading ? (
           <p className="mt-4 text-sm text-muted">{t("history.loading")}</p>
         ) : null}
@@ -166,7 +184,8 @@ export function OrderHistory({ onClose, onEdit, offline }: OrderHistoryProps) {
             // it is completed the customer has the food, and once it is
             // cancelled this was already done to it.
             const editable =
-              isKitchenStatus(order.status) || order.status === "completed";
+              canVoid &&
+              (isKitchenStatus(order.status) || order.status === "completed");
             // a sale that has not been uploaded has no server row to void
             const onTabletOnly =
               order.client_id !== null &&
@@ -188,6 +207,13 @@ export function OrderHistory({ onClose, onEdit, offline }: OrderHistoryProps) {
                       {formatTruckTime(order.created_at)}
                     </span>
                   </span>
+                  {/* with more than one cashier on the tablet, "who rang this"
+                      is the first question asked about any ticket */}
+                  {order.created_by_name ? (
+                    <span className="block truncate text-xs text-muted">
+                      {t("history.by", { name: order.created_by_name })}
+                    </span>
+                  ) : null}
                   {onTabletOnly ? (
                     // still only on this tablet. worth saying, because it is
                     // not in the day's takings in supabase yet.
@@ -226,7 +252,7 @@ export function OrderHistory({ onClose, onEdit, offline }: OrderHistoryProps) {
                     {t("history.edit")}
                   </button>
                 ) : null}
-                {order.status !== "cancelled" ? (
+                {canVoid && order.status !== "cancelled" ? (
                   <button
                     type="button"
                     disabled={offline || onTabletOnly || pending}

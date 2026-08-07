@@ -5,6 +5,7 @@ import { cartTotal, lineUnitPrice, type PricedLine } from "@/lib/pos/cart";
 import { modifierAppliesToProduct } from "@/lib/pos/modifiers";
 import { isValidOrderId } from "@/lib/pos/order-id";
 import { createClient } from "@/lib/supabase/server";
+import { applyTax, readTaxSettings, type TaxSettings } from "@/lib/pos/tax";
 import type {
   BoxContent,
   OrderType,
@@ -40,11 +41,35 @@ export type CheckoutInput = {
   ticketNumber?: number;
   // used only by the local source. the server always reads the real setting.
   kdsEnabled?: boolean;
+  // also local-only: who is signed in at the till, so a sale rung with no
+  // internet can print their name on the paper straight away. the server
+  // never trusts this - it stamps the name off the session's own profile.
+  cashierName?: string | null;
+  // local-only as well. the offline source needs the tax rule to print a
+  // correct paper with no connection. the server re-reads it from app_settings
+  // and ignores whatever arrives here, because a cart that could name its own
+  // tax rate is a cart that could set its own price.
+  taxSettings?: TaxSettings | null;
   orderType: OrderType;
   paymentMethod: PaymentMethod;
   notes: string | null;
+  // whatever the customer was willing to give. both optional - the queue moves
+  // faster than a form does, and a required field here becomes a field full of
+  // "-". stored so the truck can reach its own customers later.
+  customerName?: string | null;
+  customerPhone?: string | null;
   lines: CheckoutLine[];
 };
+
+// how long a name or a number is allowed to be. long enough for a real one,
+// short enough that a leaning tablet cannot fill the column with one keypress.
+const CUSTOMER_NAME_MAX = 80;
+const CUSTOMER_PHONE_MAX = 32;
+
+function tidy(value: string | null | undefined, max: number): string | null {
+  const trimmed = (value ?? "").trim();
+  return trimmed ? trimmed.slice(0, max) : null;
+}
 
 export type CheckoutResult =
   | {
@@ -96,10 +121,12 @@ export async function createOrder(
     return { ok: false, message: "session expired. sign in again." };
   }
 
-  // rls blocks this too, but a plain message beats a raw policy error
+  // rls blocks this too, but a plain message beats a raw policy error.
+  // the name comes along for the ride: it is snapshotted onto the order so the
+  // receipt can say who took the money without a join.
   const { data: profile } = await supabase
     .from("profiles")
-    .select("role, is_active")
+    .select("name, role, is_active")
     .eq("id", user.id)
     .maybeSingle();
 
@@ -253,7 +280,11 @@ export async function createOrder(
     });
   }
 
-  const total = cartTotal(pricedLines);
+  // the lines added up. what the customer actually pays depends on the tax
+  // rule below, which is read from the server and never from the browser -
+  // a cart that arrived claiming its own tax would be a cart that sets its
+  // own price.
+  const lineTotal = cartTotal(pricedLines);
 
   const { data: allocated, error: ticketError } = await supabase.rpc(
     "allocate_ticket_number",
@@ -280,13 +311,61 @@ export async function createOrder(
       day: "2-digit",
     }).format(new Date());
 
+  // `*` rather than a column list on purpose: naming tax_enabled here would
+  // make the whole read fail on a database where the tax migration has not
+  // been applied, and losing kds_enabled with it would silently stop sending
+  // tickets to the kitchen. asking for everything degrades instead.
   const { data: settings } = await supabase
     .from("app_settings")
-    .select("kds_enabled")
+    .select("*")
     .eq("id", "global")
     .maybeSingle();
 
   const initialStatus = settings?.kds_enabled ? "pending" : "completed";
+
+  // the tax rule as it stands right now, applied once, then frozen onto the
+  // row below. from this point the numbers are history, not a calculation.
+  const tax = applyTax(lineTotal, readTaxSettings(settings));
+  const total = tax.total;
+
+  // which drawer this sale belongs to.
+  //
+  // a missing shift never stops a sale. if nobody opened one - first sale of
+  // the morning, or a cashier who went straight to the screen - one is opened
+  // for them with a zero float, so the money is still attributed to somebody.
+  // if even that fails the sale goes through unattached rather than not at all.
+  let shiftId: string | null = null;
+  {
+    const { data: open } = await supabase
+      .from("shifts")
+      .select("id")
+      .is("closed_at", null)
+      .maybeSingle();
+
+    if (open) {
+      shiftId = open.id;
+    } else {
+      const { data: started } = await supabase
+        .from("shifts")
+        .insert({ opened_by: user.id, opened_by_name: profile.name })
+        .select("id")
+        .maybeSingle();
+
+      if (started) {
+        shiftId = started.id;
+      } else {
+        // somebody else opened one in the moment between the read and the
+        // insert. take theirs rather than leaving the sale unattached.
+        const { data: raced } = await supabase
+          .from("shifts")
+          .select("id")
+          .is("closed_at", null)
+          .maybeSingle();
+
+        shiftId = raced?.id ?? null;
+      }
+    }
+  }
 
   const { data: order, error: orderError } = await supabase
     .from("orders")
@@ -295,11 +374,21 @@ export async function createOrder(
       ...(input.orderId ? { id: input.orderId } : {}),
       client_id: input.clientId,
       total_amount: total,
+      subtotal_amount: tax.subtotal,
+      tax_amount: tax.tax,
+      tax_rate: tax.rate,
+      // only worth keeping when something was charged. a label with no tax
+      // behind it would print an empty line on the paper.
+      tax_label: tax.tax > 0 ? tax.label : null,
       payment_method: input.paymentMethod,
       order_type: input.orderType,
       status: initialStatus,
       notes: input.notes,
       created_by: user.id,
+      created_by_name: profile.name,
+      shift_id: shiftId,
+      customer_name: tidy(input.customerName, CUSTOMER_NAME_MAX),
+      customer_phone: tidy(input.customerPhone, CUSTOMER_PHONE_MAX),
       ticket_date: ticketDate,
       ticket_number: allocated,
     })
@@ -424,6 +513,11 @@ export async function replaceOrder(
 
   const supabase = await createClient();
 
+  // an edit voids the old ticket, so it is a cancel wearing a different hat
+  // and it answers to the same rule. checked before anything is written.
+  const denied = await requireAdminForOrders(supabase, "edit an order");
+  if (denied) return { ok: false, message: denied };
+
   const { data: original, error: readError } = await supabase
     .from("orders")
     .select("id, status, ticket_number")
@@ -520,19 +614,25 @@ export type CancelOrderResult =
   | { ok: true; ticket: string; warning?: string }
   | { ok: false; message: string };
 
-// cashier void from order history, including a completed sale discovered late.
-// stock return is idempotent, so a retry cannot add the same pieces twice.
-export async function cancelOrder(orderId: string): Promise<CancelOrderResult> {
-  if (!isValidOrderId(orderId)) {
-    return { ok: false, message: "that ticket has an invalid id" };
-  }
-
-  const supabase = await createClient();
+// undoing a sale is an admin's job, not a cashier's.
+//
+// once a ticket is rung the money is in the drawer, and the two operations
+// that can take it back out - voiding a sale and editing one into a cheaper
+// one - are exactly how a till gets skimmed. a cashier who can cancel their
+// own sale can pocket the cash and leave a cancelled row that nobody queries.
+//
+// so both go through here, and the check is on the server. the buttons are
+// hidden in the till as well, but that is a courtesy to the cashier, not the
+// control - a hidden button is still a button somebody can call.
+async function requireAdminForOrders(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  action: string,
+): Promise<string | null> {
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user) return { ok: false, message: "session expired. sign in again." };
+  if (!user) return "session expired. sign in again.";
 
   const { data: profile } = await supabase
     .from("profiles")
@@ -540,13 +640,30 @@ export async function cancelOrder(orderId: string): Promise<CancelOrderResult> {
     .eq("id", user.id)
     .maybeSingle();
 
-  if (
-    !profile ||
-    !profile.is_active ||
-    (profile.role !== "cashier" && profile.role !== "admin")
-  ) {
-    return { ok: false, message: "this account cannot cancel orders" };
+  if (!profile || !profile.is_active) {
+    return "this account is not active";
   }
+
+  if (profile.role !== "admin") {
+    // says who can, not just that you cannot. the cashier's next move is to
+    // fetch the manager, and the message should tell them that.
+    return `only an admin can ${action}. ask the manager to sign in.`;
+  }
+
+  return null;
+}
+
+// admin void from order history, including a completed sale discovered late.
+// stock return is idempotent, so a retry cannot add the same pieces twice.
+export async function cancelOrder(orderId: string): Promise<CancelOrderResult> {
+  if (!isValidOrderId(orderId)) {
+    return { ok: false, message: "that ticket has an invalid id" };
+  }
+
+  const supabase = await createClient();
+
+  const denied = await requireAdminForOrders(supabase, "cancel an order");
+  if (denied) return { ok: false, message: denied };
 
   const { data: order, error: readError } = await supabase
     .from("orders")

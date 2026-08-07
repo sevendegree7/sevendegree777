@@ -2,10 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 
+import { isTaxMode, normaliseLabel, normaliseRate } from "@/lib/pos/tax";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import type {
   InventoryMode,
+  TaxMode,
   UserRole,
   WasteReason,
 } from "@/types/database.types";
@@ -542,6 +544,12 @@ export async function updateOperatingSettings(input: {
   kdsEnabled: boolean;
   inventoryMode: InventoryMode;
   receiptCopies: number;
+  taxEnabled: boolean;
+  taxLabel: string;
+  // arrives as typed, because "14." is a thing a keyboard produces halfway
+  // through typing 14.5 and the form must not fight the person using it
+  taxRate: string;
+  taxMode: TaxMode;
 }): Promise<ActionResult> {
   const { supabase, error } = await requireAdmin();
   if (error) return { ok: false, message: error };
@@ -554,12 +562,32 @@ export async function updateOperatingSettings(input: {
     return { ok: false, message: "receipt copies must be between 1 and 3" };
   }
 
+  if (!isTaxMode(input.taxMode)) {
+    return { ok: false, message: "invalid tax mode" };
+  }
+
+  const taxLabel = normaliseLabel(input.taxLabel);
+  const taxRate = normaliseRate(input.taxRate);
+
+  // only worth complaining about when they meant to turn it on. saving with
+  // tax off and an empty rate is a perfectly ordinary thing to do.
+  if (input.taxEnabled && taxRate <= 0) {
+    return {
+      ok: false,
+      message: "set a tax percentage between 0 and 100 before turning tax on",
+    };
+  }
+
   const { error: updateError } = await supabase
     .from("app_settings")
     .update({
       kds_enabled: input.kdsEnabled,
       inventory_mode: input.inventoryMode,
       receipt_copies: input.receiptCopies,
+      tax_enabled: input.taxEnabled,
+      tax_label: taxLabel,
+      tax_rate: taxRate,
+      tax_mode: input.taxMode,
       updated_at: new Date().toISOString(),
     })
     .eq("id", "global");

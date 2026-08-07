@@ -13,6 +13,7 @@ import type {
   OrderItem,
   SelectedModifier,
 } from "@/types/database.types";
+import { applyTax, TAX_SETTINGS_OFF } from "@/lib/pos/tax";
 import { nextLocalTicketNumber } from "@/lib/pos/ticket-counter";
 
 import { readCachedMenu } from "./menu-cache";
@@ -210,7 +211,13 @@ export function createLocalSource(): DataSource {
         });
       }
 
-      const total = cartTotal(pricedLines);
+      // the till hands the rule down with the sale. no connection means no way
+      // to ask app_settings, and a paper printed here without the tax on it
+      // would not match the one the server prints when this uploads.
+      const tax = applyTax(
+        cartTotal(pricedLines),
+        input.taxSettings ?? TAX_SETTINGS_OFF,
+      );
       const orderId = newOrderId();
       const takenAt = new Date().toISOString();
       const ticket = nextLocalTicketNumber(new Date(takenAt));
@@ -233,13 +240,26 @@ export function createLocalSource(): DataSource {
       const order: KitchenOrder = {
         id: orderId,
         client_id: input.clientId,
-        total_amount: total,
+        total_amount: tax.total,
+        subtotal_amount: tax.subtotal,
+        tax_amount: tax.tax,
+        tax_rate: tax.rate,
+        tax_label: tax.tax > 0 ? tax.label : null,
         payment_method: input.paymentMethod,
         order_type: input.orderType,
         status: input.kdsEnabled ? "pending" : "completed",
         notes: input.notes,
         // the server stamps the real user when this is uploaded
         created_by: null,
+        // but the paper is printed now, so the name is carried from the till.
+        // the upload overwrites it with the one on the session's profile.
+        created_by_name: input.cashierName ?? null,
+        // no shift on the tablet. the upload attaches the sale to whichever
+        // drawer is open when it lands, which is the honest answer - a sale
+        // taken with no internet has no shift of its own to belong to.
+        shift_id: null,
+        customer_name: input.customerName ?? null,
+        customer_phone: input.customerPhone ?? null,
         // stock is pulled by the server on upload, never here
         stock_deducted: false,
         ticket_date: ticket.date,

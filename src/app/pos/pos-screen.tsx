@@ -30,6 +30,8 @@ import {
 } from "@/lib/pos/box";
 import { groupModifiersByProduct } from "@/lib/pos/modifiers";
 import { buildReceipt, type Receipt } from "@/lib/pos/receipt";
+import type { ShiftReport } from "@/lib/pos/shift-report";
+import { readTaxSettings } from "@/lib/pos/tax";
 import { primeTicketCounter } from "@/lib/pos/ticket-counter";
 import type {
   AppSettings,
@@ -38,9 +40,11 @@ import type {
   PaymentMethod,
   Product,
   SelectedModifier,
+  Shift,
 } from "@/types/database.types";
 
 import { type CheckoutLine } from "./actions";
+import { currentShift } from "./shift-actions";
 import { CartPanel } from "./components/cart-panel";
 import { BoxBuilderModal } from "./components/box-builder-modal";
 import { CategoryTabs } from "./components/category-tabs";
@@ -49,6 +53,7 @@ import { ModifierModal } from "./components/modifier-modal";
 import { OrderHistory } from "./components/order-history";
 import { ProductGrid } from "./components/product-grid";
 import { ReceiptView } from "./components/receipt-view";
+import { ShiftBar } from "./components/shift-bar";
 
 type PosScreenProps = {
   // read on the server for a fast first paint. null means that read failed,
@@ -57,6 +62,17 @@ type PosScreenProps = {
   initialSettings: AppSettings;
   initialTicketDate: string | null;
   initialTicketNumber: number;
+  // the signed-in cashier, for the offline receipt only. an online sale gets
+  // this name stamped on the server from the session's own profile.
+  cashierName: string | null;
+  // whether this account may void or edit a sale that has already been rung.
+  // admin only - a cashier who can cancel their own sale can pocket the cash.
+  // the server enforces it too; this only keeps the buttons off their screen.
+  canVoid: boolean;
+  // the drawer that is currently open, if any. null is the normal state first
+  // thing in the morning, and also what a till with no shifts table answers.
+  initialShift: Shift | null;
+  initialShiftReport: ShiftReport | null;
 };
 
 // the message under the header.
@@ -82,7 +98,19 @@ export function PosScreen({
   initialSettings,
   initialTicketDate,
   initialTicketNumber,
+  cashierName,
+  canVoid,
+  initialShift,
+  initialShiftReport,
 }: PosScreenProps) {
+  // the tax rule as the server last handed it over. read once here rather than
+  // in the cart, so the ticket the cashier reads out and the sale that gets
+  // written are working off the same numbers.
+  const taxSettings = useMemo(
+    () => readTaxSettings(initialSettings),
+    [initialSettings],
+  );
+
   const [menu, setMenu] = useState<MenuSnapshot | null>(initialMenu);
   const [menuError, setMenuError] = useState<string | null>(null);
   const [menuAttempt, setMenuAttempt] = useState(0);
@@ -94,6 +122,14 @@ export function PosScreen({
   const [orderType, setOrderType] = useState<OrderType>("takeaway");
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash");
   const [orderNotes, setOrderNotes] = useState("");
+  // both optional, and never validated. a required field during a rush is a
+  // column full of "-", and no sale is ever worth blocking for a phone number.
+  const [customerName, setCustomerName] = useState("");
+  const [customerPhone, setCustomerPhone] = useState("");
+  const [shift, setShift] = useState<Shift | null>(initialShift);
+  const [shiftReport, setShiftReport] = useState<ShiftReport | null>(
+    initialShiftReport,
+  );
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   // the sale being corrected. the old ticket is not touched until the new one
@@ -269,6 +305,19 @@ export function PosScreen({
     [saleSeed, cart, orderType, paymentMethod, orderNotes],
   );
 
+  // read the drawer again after a sale lands. the numbers on the bar have moved,
+  // and a sale rung with no shift open will have opened one on the server.
+  // failing quietly is right: the running total is a convenience, not the sale.
+  async function refreshShift() {
+    try {
+      const next = await currentShift();
+      setShift(next.shift);
+      setShiftReport(next.report);
+    } catch {
+      // offline, or no shifts table yet. the bar keeps what it had.
+    }
+  }
+
   function addToCart(
     product: Product,
     selectedModifiers: SelectedModifier[],
@@ -360,6 +409,10 @@ export function PosScreen({
     setOrderType(order.order_type);
     setPaymentMethod(order.payment_method ?? "cash");
     setOrderNotes(order.notes ?? "");
+    // the customer's details came with the original sale and belong to the
+    // corrected one too - retyping them is how they get lost
+    setCustomerName(order.customer_name ?? "");
+    setCustomerPhone(order.customer_phone ?? "");
     setEditing({ orderId: order.id, ticket: ticketNumber(order) });
     // a fresh seed: this is a different sale from the one being replaced, and
     // must not share a checkout id with it
@@ -372,6 +425,8 @@ export function PosScreen({
     setEditing(null);
     setCart([]);
     setOrderNotes("");
+    setCustomerName("");
+    setCustomerPhone("");
     setFeedback(null);
   }
 
@@ -404,6 +459,13 @@ export function PosScreen({
         paymentMethod,
         notes: orderNotes.trim() ? orderNotes.trim() : null,
         kdsEnabled: initialSettings.kds_enabled,
+        cashierName,
+        // local-only, like the two above. the server re-reads the rule from
+        // app_settings and ignores this - it is here so a sale rung with no
+        // internet still charges and prints the same tax as one with.
+        taxSettings,
+        customerName: customerName.trim() ? customerName.trim() : null,
+        customerPhone: customerPhone.trim() ? customerPhone.trim() : null,
         lines,
       };
 
@@ -436,10 +498,13 @@ export function PosScreen({
 
         setCart([]);
         setOrderNotes("");
+        setCustomerName("");
+        setCustomerPhone("");
         setConfirmOpen(false);
         setEditing(null);
         setSaleSeed(newOrderId());
         primeTicketCounter(result.ticketDate, result.ticketNumber);
+        void refreshShift();
         setFeedback(
           warning
             ? { kind: "error", text: warning }
@@ -526,6 +591,16 @@ export function PosScreen({
             </span>
           ) : null}
         </div>
+
+        <ShiftBar
+          shift={shift}
+          report={shiftReport}
+          offline={offline}
+          onChanged={(next) => {
+            setShift(next.shift);
+            setShiftReport(next.report);
+          }}
+        />
 
         {editing ? (
           // the cart looks exactly like a normal sale, so the one thing that
@@ -616,6 +691,9 @@ export function PosScreen({
           orderType={orderType}
           paymentMethod={paymentMethod}
           orderNotes={orderNotes}
+          customerName={customerName}
+          customerPhone={customerPhone}
+          tax={taxSettings}
           submitting={submitting}
           onChangeQuantity={changeQuantity}
           onRemove={(lineId) =>
@@ -627,6 +705,8 @@ export function PosScreen({
           onOrderTypeChange={setOrderType}
           onPaymentMethodChange={setPaymentMethod}
           onOrderNotesChange={setOrderNotes}
+          onCustomerNameChange={setCustomerName}
+          onCustomerPhoneChange={setCustomerPhone}
           onCheckout={openConfirm}
         />
       </div>
@@ -671,6 +751,7 @@ export function PosScreen({
           onClose={() => setHistoryOpen(false)}
           onEdit={startEdit}
           offline={offline}
+          canVoid={canVoid}
         />
       ) : null}
 

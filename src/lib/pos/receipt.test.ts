@@ -112,6 +112,20 @@ describe("buildReceipt", () => {
     expect(receipt.lines[0].unitPrice).toBe(10);
     expect(receipt.lines[0].lineTotal).toBe(30);
   });
+
+  it("names the cashier who rang the sale", () => {
+    expect(buildReceipt(order({ created_by_name: "Ahmed" })).cashier).toBe(
+      "Ahmed",
+    );
+  });
+
+  it("leaves the cashier off rather than printing a blank one", () => {
+    // sales taken before this column existed, and a name saved as spaces.
+    // "Cashier:" with nothing after it invites the customer to ask why.
+    expect(buildReceipt(order()).cashier).toBeNull();
+    expect(buildReceipt(order({ created_by_name: null })).cashier).toBeNull();
+    expect(buildReceipt(order({ created_by_name: "   " })).cashier).toBeNull();
+  });
 });
 
 // the reason this goes through piastres instead of `unitPrice * quantity`
@@ -139,5 +153,71 @@ describe("formatTruckTime", () => {
 
   it("prints an empty string rather than Invalid Date", () => {
     expect(formatTruckTime("not a date")).toBe("");
+  });
+});
+
+describe("buildReceipt - tax", () => {
+  it("prints nothing at all when the sale carried no tax", () => {
+    // every sale before the tax migration, and every sale rung while it was
+    // switched off. a "TAX 0.00" line is a question nobody at the counter can
+    // answer, so there is no line.
+    expect(buildReceipt(order()).tax).toBeNull();
+    expect(
+      buildReceipt(order({ tax_amount: 0, subtotal_amount: 20 })).tax,
+    ).toBeNull();
+    expect(buildReceipt(order({ tax_amount: null })).tax).toBeNull();
+  });
+
+  it("reads the tax off the order rather than recalculating it", () => {
+    // the truck's rate today has nothing to do with what this customer paid
+    const receipt = buildReceipt(
+      order({
+        total_amount: 114,
+        subtotal_amount: 100,
+        tax_amount: 14,
+        tax_rate: 14,
+        tax_label: "VAT",
+      }),
+    );
+
+    expect(receipt.tax).toEqual({
+      label: "VAT",
+      rate: 14,
+      amount: 14,
+      subtotal: 100,
+    });
+    expect(receipt.total).toBe(114);
+  });
+
+  it("keeps subtotal + tax equal to the total on a tax-inclusive sale", () => {
+    const receipt = buildReceipt(
+      order({
+        total_amount: 100,
+        subtotal_amount: 87.72,
+        tax_amount: 12.28,
+        tax_rate: 14,
+        tax_label: "ضريبة",
+      }),
+    );
+
+    expect(receipt.tax!.subtotal + receipt.tax!.amount).toBe(receipt.total);
+    expect(receipt.tax!.label).toBe("ضريبة");
+  });
+
+  it("works out the subtotal when the column was never filled in", () => {
+    // only reachable on a row edited by hand - the till always writes both
+    const receipt = buildReceipt(
+      order({ total_amount: 114, tax_amount: 14, tax_rate: 14 }),
+    );
+
+    expect(receipt.tax!.subtotal).toBe(100);
+  });
+
+  it("names the line rather than printing a bare number", () => {
+    const receipt = buildReceipt(
+      order({ total_amount: 114, subtotal_amount: 100, tax_amount: 14 }),
+    );
+
+    expect(receipt.tax!.label).toBe("Tax");
   });
 });

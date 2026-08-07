@@ -32,6 +32,10 @@
   --accent-surface: var(--brand-saffron);
   --accent-ink: var(--brand-navy);
 
+  /* the receipt roll. this is the one number to change for a 58mm printer -
+     the print rules and the page height in lib/pos/print-page.ts both read it */
+  --receipt-roll-width: 80mm;
+
   /* states borrow from the cuisine set rather than invent new colour */
   --ok: #5f8442;
   --warn: #a97a24;
@@ -134,10 +138,39 @@ body {
    and the cart on the paper. everything is hidden and only the receipt is put
    back, which is why the paper carries a class rather than an id - there is
    more than one copy on the page. */
+/* the fallback page. the print button replaces this with a rule carrying a
+   measured height (see lib/pos/print-page.ts) - this is what a browser-menu
+   Ctrl+P gets. dropping the margins is the half of it that works without any
+   measurement: it moves the receipt from the middle of the sheet to the top
+   left corner, where a roll expects it. */
+@page {
+  margin: 0;
+}
+
+/* the measuring pass. the receipt is briefly laid out at its printed width so
+   the page height can be read off it - applied and removed inside one task, so
+   it never reaches the screen. */
+html.measuring-receipt .receipt-paper {
+  width: var(--receipt-roll-width);
+  max-width: none;
+  padding: 3mm 4mm 6mm;
+}
+
 @media print {
   /* paper is paper. a dark theme on screen must not print navy ink. */
   :root {
     color-scheme: light;
+  }
+
+  /* the rules, the borders under the order number and the dashed separators
+     are the layout. a printer dropping "background graphics" drops them. */
+  html,
+  body {
+    margin: 0;
+    padding: 0;
+    background: #fff;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
 
   body * {
@@ -145,20 +178,52 @@ body {
   }
 
   .receipt-paper,
-  .receipt-paper * {
+  .receipt-paper *,
+  .report-paper,
+  .report-paper * {
     visibility: visible;
+  }
+
+  /* an admin report on an office printer, not a receipt on a roll.
+     hiding the nav and the filter form leaves their space behind - they are
+     invisible, not gone - so the sheet is lifted out of the flow and put at
+     the top of the page rather than below a hand's width of nothing. */
+  .report-paper {
+    position: absolute;
+    inset-block-start: 0;
+    inset-inline-start: 0;
+    width: 100%;
+    background: #fff;
+    color: #000;
+  }
+
+  /* controls are not content. a printed sheet cannot be filtered. */
+  .print-hide {
+    display: none !important;
+  }
+
+  /* a chart cut in half across two sheets is worse than one that moved */
+  .report-paper section {
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
 
   .receipt-paper {
     position: relative;
-    /* 80mm thermal roll, minus the margin the print dialog adds */
-    width: 72mm;
+    /* the full roll. the padding keeps the ink inside the printable area,
+       which on an 80mm head is about 72mm. these two must stay identical to
+       the measuring rule above or the measured height is wrong. */
+    width: var(--receipt-roll-width);
+    max-width: none;
+    padding: 3mm 4mm 6mm;
     background: #fff;
     color: #000;
     break-after: page;
     page-break-after: always;
   }
 
+  /* the tail feed. a thermal cutter sits a few mm above the print head, so
+     without this the last line of a copy is still under the blade. */
   .receipt-paper:last-child {
     break-after: auto;
     page-break-after: auto;

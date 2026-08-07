@@ -1,8 +1,11 @@
 "use client";
 
+import { useState } from "react";
+
 import { useTranslate } from "@/lib/i18n/use-language";
 import { cartTotal, lineTotal, type CartLine } from "@/lib/pos/cart";
 import { formatMoney } from "@/lib/pos/money";
+import { applyTax, type TaxSettings } from "@/lib/pos/tax";
 import type { OrderType, PaymentMethod } from "@/types/database.types";
 
 import { OrderTypeSelect } from "./order-type-select";
@@ -13,6 +16,11 @@ type CartPanelProps = {
   orderType: OrderType;
   paymentMethod: PaymentMethod;
   orderNotes: string;
+  customerName: string;
+  customerPhone: string;
+  // the same rule the server will charge on. shown here so the number the
+  // cashier reads out is the number that ends up on the paper.
+  tax: TaxSettings;
   submitting: boolean;
   onChangeQuantity: (lineId: string, quantity: number) => void;
   onRemove: (lineId: string) => void;
@@ -20,6 +28,8 @@ type CartPanelProps = {
   onOrderTypeChange: (value: OrderType) => void;
   onPaymentMethodChange: (value: PaymentMethod) => void;
   onOrderNotesChange: (value: string) => void;
+  onCustomerNameChange: (value: string) => void;
+  onCustomerPhoneChange: (value: string) => void;
   onCheckout: () => void;
 };
 
@@ -29,6 +39,9 @@ export function CartPanel({
   orderType,
   paymentMethod,
   orderNotes,
+  customerName,
+  customerPhone,
+  tax,
   submitting,
   onChangeQuantity,
   onRemove,
@@ -36,11 +49,21 @@ export function CartPanel({
   onOrderTypeChange,
   onPaymentMethodChange,
   onOrderNotesChange,
+  onCustomerNameChange,
+  onCustomerPhoneChange,
   onCheckout,
 }: CartPanelProps) {
   const { t } = useTranslate();
 
-  const total = cartTotal(lines);
+  // folded away by default, and it stays open once something is typed. taking a
+  // name is worth two taps when the customer offers one, and worth nothing at
+  // all during a rush - so it never sits between the cashier and the pay button.
+  const [customerOpen, setCustomerOpen] = useState(false);
+  const showCustomer = customerOpen || customerName !== "" || customerPhone !== "";
+
+  // the same call the server makes at checkout, on the same lines, so the two
+  // cannot disagree about what is owed
+  const money = applyTax(cartTotal(lines), tax);
   const itemCount = lines.reduce((sum, line) => sum + line.quantity, 0);
 
   return (
@@ -152,11 +175,60 @@ export function CartPanel({
         />
       </label>
 
-      <div className="flex items-center justify-between border-t border-line pt-4">
-        <span className="text-base text-muted">{t("cart.total")}</span>
-        <span className="font-mono text-2xl font-semibold">
-          {formatMoney(total)}
-        </span>
+      {showCustomer ? (
+        <div className="flex flex-col gap-2">
+          <span className="text-sm text-muted">{t("cart.customerDetails")}</span>
+          <input
+            type="text"
+            value={customerName}
+            onChange={(event) => onCustomerNameChange(event.target.value)}
+            placeholder={t("cart.customerName")}
+            className="w-full rounded-xl border border-line bg-surface px-4 py-3 text-base text-ink outline-none focus:border-accent"
+          />
+          <input
+            // tel, not number: a phone can start with a zero and the tablet
+            // should bring up a keypad rather than a spinner
+            type="tel"
+            inputMode="tel"
+            value={customerPhone}
+            onChange={(event) => onCustomerPhoneChange(event.target.value)}
+            placeholder={t("cart.customerPhone")}
+            className="w-full rounded-xl border border-line bg-surface px-4 py-3 text-base text-ink outline-none focus:border-accent"
+          />
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setCustomerOpen(true)}
+          className="self-start text-sm text-muted underline"
+        >
+          + {t("cart.customerDetails")}
+        </button>
+      )}
+
+      <div className="border-t border-line pt-4">
+        {/* only when there is tax to show. a truck with no tax set up gets the
+            single total line it has always had, unchanged. */}
+        {money.tax > 0 ? (
+          <div className="mb-2 space-y-1 text-sm text-muted">
+            <div className="flex items-center justify-between">
+              <span>{t("cart.subtotal")}</span>
+              <span className="font-mono">{formatMoney(money.subtotal)}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span>
+                {money.label} {money.rate}%
+              </span>
+              <span className="font-mono">{formatMoney(money.tax)}</span>
+            </div>
+          </div>
+        ) : null}
+        <div className="flex items-center justify-between">
+          <span className="text-base text-muted">{t("cart.total")}</span>
+          <span className="font-mono text-2xl font-semibold">
+            {formatMoney(money.total)}
+          </span>
+        </div>
       </div>
 
       <button

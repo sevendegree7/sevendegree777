@@ -2,6 +2,7 @@
 
 import { useTranslate, type Translator } from "@/lib/i18n/use-language";
 import { formatMoney } from "@/lib/pos/money";
+import { applyReceiptPageSize } from "@/lib/pos/print-page";
 import type { Receipt } from "@/lib/pos/receipt";
 
 type ReceiptViewProps = {
@@ -76,7 +77,12 @@ export function ReceiptView({
           </button>
           <button
             type="button"
-            onClick={() => window.print()}
+            // the page is sized to the receipt on the way to the dialog, so
+            // what comes out is the paper's width and the receipt's length
+            onClick={() => {
+              applyReceiptPageSize(document);
+              window.print();
+            }}
             className="flex-[2] rounded-xl bg-navy px-4 py-3 text-base font-semibold text-cream dark:bg-accent-surface dark:text-accent-ink"
           >
             {t("receipt.print")}
@@ -105,8 +111,33 @@ function ReceiptPaper({
   const showPrices = variant === "customer";
 
   return (
-    <div className="receipt-paper mb-4 rounded-2xl bg-white p-6 font-mono text-sm text-black shadow-lg print:mb-0 print:rounded-none print:p-0 print:shadow-none">
+    // the print padding is set in globals.css next to the roll width, so there
+    // is no print:p-* here to override it
+    <div className="receipt-paper mb-4 rounded-2xl bg-white p-6 font-mono text-sm text-black shadow-lg print:mb-0 print:rounded-none print:shadow-none">
       <div className="text-center">
+        {/* the brand mark, customer copy only.
+            not on the prep paper: the baker does not need branding, and every
+            copy of it is another 8mm of roll and another second under the head.
+
+            sized in mm rather than px on purpose - this is the one element on
+            the paper whose printed size should not depend on how wide the
+            preview happens to be. alt is empty because the wordmark directly
+            below already says the name, and a reader announcing it twice is
+            worse than not announcing it at all. */}
+        {showPrices ? (
+          // a plain img rather than next/image on purpose: this element is
+          // measured for the page height and then sent to a print head, and
+          // next/image's srcset can hand the printer a different candidate
+          // than the one that was measured.
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src="/brand/logo.png"
+            alt=""
+            loading="eager"
+            decoding="sync"
+            className="mx-auto mb-2 h-auto w-[20mm]"
+          />
+        ) : null}
         <p className="text-base font-semibold tracking-[0.2em]">
           SEVEN | DEGREES
         </p>
@@ -144,6 +175,28 @@ function ReceiptPaper({
                 ? t(`payment.${receipt.paymentMethod}`)
                 : "-"}
             </span>
+          </div>
+        ) : null}
+        {/* on both papers. the customer's copy is what comes back with a
+            complaint, and the baker wants to know who to go and ask. */}
+        {receipt.cashier ? (
+          <div className="flex justify-between">
+            <span>{t("receipt.servedBy")}</span>
+            <span>{receipt.cashier}</span>
+          </div>
+        ) : null}
+        {/* the customer's own details, on both papers: the counter calls the
+            name, and the kitchen copy is what a delivery goes out with */}
+        {receipt.customerName ? (
+          <div className="flex justify-between">
+            <span>{t("receipt.customer")}</span>
+            <span>{receipt.customerName}</span>
+          </div>
+        ) : null}
+        {receipt.customerPhone ? (
+          <div className="flex justify-between">
+            <span>{t("receipt.phone")}</span>
+            <span className="tracking-tight">{receipt.customerPhone}</span>
           </div>
         ) : null}
         {receipt.replaces ? (
@@ -193,9 +246,29 @@ function ReceiptPaper({
       </ul>
 
       {showPrices ? (
-        <div className="mt-3 flex justify-between border-t border-dashed border-neutral-400 pt-3 text-lg font-bold">
-          <span>{t("receipt.total")}</span>
-          <span>{formatMoney(receipt.total)}</span>
+        <div className="mt-3 border-t border-dashed border-neutral-400 pt-3">
+          {/* the split, only when something was actually charged. the two lines
+              add up to the total in both tax modes - a price the tax was added
+              to, and a price it was already inside - so the paper needs no
+              extra wording to be honest either way. */}
+          {receipt.tax ? (
+            <div className="mb-2 space-y-0.5 text-xs">
+              <div className="flex justify-between">
+                <span>{t("receipt.subtotal")}</span>
+                <span>{formatMoney(receipt.tax.subtotal)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>
+                  {receipt.tax.label} {receipt.tax.rate}%
+                </span>
+                <span>{formatMoney(receipt.tax.amount)}</span>
+              </div>
+            </div>
+          ) : null}
+          <div className="flex justify-between text-lg font-bold">
+            <span>{t("receipt.total")}</span>
+            <span>{formatMoney(receipt.total)}</span>
+          </div>
         </div>
       ) : (
         <div className="mt-3 border-t border-dashed border-neutral-400 pt-2" />
