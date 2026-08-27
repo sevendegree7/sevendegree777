@@ -2,12 +2,14 @@
 
 give this whole file to claude code (or cursor) as project context before coding.
 
-last updated: deployment, offline dry run, and launch-hardening code are done
-locally. read `PHASE-5-HANDOFF.md` before deploying this change.
+last updated: phase 6 (discount, diyafa, agel, reports) is in the repo and
+migrations are applied on live supabase. read `PHASE-6-HANDOFF.md` before
+touching checkout, debts, or report filters.
 
 **picking this up for the first time?** read this file for the shape of the
-project, then `PHASE-5-HANDOFF.md`. use `PHASE-4-HANDOFF.md` §13 and §20 for
-the one-tablet offline design and its test procedure.
+project, then `PHASE-6-HANDOFF.md` (latest), then `PHASE-5-HANDOFF.md`. use
+`PHASE-4-HANDOFF.md` §13 and §20 for the one-tablet offline design and its test
+procedure.
 
 ---
 
@@ -78,7 +80,7 @@ phase 4 is done and merged — the truck can now trade with no internet:
 - admin controls staff accounts, KDS mode, inventory mode and receipt copies
 - finished-goods mode receives ready bakes into the vitrine and deducts pieces
 - all new database work is in the forward migrations documented in
-  `PHASE-5-HANDOFF.md`
+  `PHASE-5-HANDOFF.md` and `PHASE-6-HANDOFF.md`
 - brand system is wired through the app: navy / cream / saffron tokens, light
   and dark themes following the device by default, arabic/english on the till
   and login (with rtl), account menu top-right, and the seven-fusions menu

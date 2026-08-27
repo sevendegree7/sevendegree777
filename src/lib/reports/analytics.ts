@@ -4,6 +4,9 @@ import { truckDayKey, truckHour } from "@/lib/reports/dates";
 export type ReportOrder = {
   id: string;
   total_amount: number;
+  tax_amount?: number | null;
+  discount_amount?: number | null;
+  is_diyafa?: boolean | null;
   payment_method: string | null;
   order_type: string;
   status: string;
@@ -27,6 +30,9 @@ export type NamedAmount = {
 
 export type ReportSummary = {
   salesTotal: number;
+  taxTotal: number;
+  discountTotal: number;
+  diyafaCount: number;
   orderCount: number;
   averageTicket: number;
   cancelledCount: number;
@@ -42,6 +48,7 @@ const PAYMENT_LABEL: Record<string, string> = {
   cash: "Cash",
   card: "Card",
   instapay: "InstaPay",
+  agel: "Agel",
   unknown: "Unknown",
 };
 
@@ -63,6 +70,13 @@ export function buildReportSummary(input: {
 }): ReportSummary {
   const live = input.orders.filter((order) => order.status !== "cancelled");
   const salesTotal = moneySum(live.map((order) => Number(order.total_amount)));
+  const taxTotal = moneySum(
+    live.map((order) => Number(order.tax_amount ?? 0)),
+  );
+  const discountTotal = moneySum(
+    live.map((order) => Number(order.discount_amount ?? 0)),
+  );
+  const diyafaCount = live.filter((order) => order.is_diyafa === true).length;
   const orderCount = live.length;
   const averageTicket =
     orderCount === 0 ? 0 : toPounds(toPiastres(salesTotal) / orderCount);
@@ -141,6 +155,9 @@ export function buildReportSummary(input: {
 
   return {
     salesTotal,
+    taxTotal,
+    discountTotal,
+    diyafaCount,
     orderCount,
     averageTicket,
     cancelledCount: input.cancelledCount,

@@ -52,6 +52,11 @@ export type Receipt = {
     amount: number;
     subtotal: number;
   } | null;
+  // discount taken after tax. null when none.
+  discountAmount: number | null;
+  // hospitality: whole ticket free
+  isDiyafa: boolean;
+  diyafaReason: string | null;
   // what the customer was charged. read off the order, not re-added from the
   // lines - this is the number the till and the db agree on.
   total: number;
@@ -144,6 +149,12 @@ export function buildReceipt(
     lines,
     itemCount: lines.reduce((sum, line) => sum + line.quantity, 0),
     tax: receiptTax(order),
+    discountAmount:
+      Number(order.discount_amount ?? 0) > 0
+        ? Number(order.discount_amount)
+        : null,
+    isDiyafa: order.is_diyafa === true,
+    diyafaReason: order.diyafa_reason?.trim() || null,
     total: Number(order.total_amount),
     notes: order.notes,
     replaces: options.replaces ?? null,

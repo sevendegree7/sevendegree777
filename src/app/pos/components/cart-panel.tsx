@@ -5,8 +5,13 @@ import { useState } from "react";
 import { useTranslate } from "@/lib/i18n/use-language";
 import { cartTotal, lineTotal, type CartLine } from "@/lib/pos/cart";
 import { formatMoney } from "@/lib/pos/money";
-import { applyTax, type TaxSettings } from "@/lib/pos/tax";
-import type { OrderType, PaymentMethod } from "@/types/database.types";
+import { priceSale } from "@/lib/pos/pricing";
+import type { TaxSettings } from "@/lib/pos/tax";
+import type {
+  DiscountKind,
+  OrderType,
+  PaymentMethod,
+} from "@/types/database.types";
 
 import { OrderTypeSelect } from "./order-type-select";
 import { PaymentSelect } from "./payment-select";
@@ -18,6 +23,10 @@ type CartPanelProps = {
   orderNotes: string;
   customerName: string;
   customerPhone: string;
+  discountKind: DiscountKind | null;
+  discountValue: string;
+  isDiyafa: boolean;
+  diyafaReason: string;
   // the same rule the server will charge on. shown here so the number the
   // cashier reads out is the number that ends up on the paper.
   tax: TaxSettings;
@@ -30,6 +39,10 @@ type CartPanelProps = {
   onOrderNotesChange: (value: string) => void;
   onCustomerNameChange: (value: string) => void;
   onCustomerPhoneChange: (value: string) => void;
+  onDiscountKindChange: (value: DiscountKind | null) => void;
+  onDiscountValueChange: (value: string) => void;
+  onDiyafaChange: (value: boolean) => void;
+  onDiyafaReasonChange: (value: string) => void;
   onCheckout: () => void;
 };
 
@@ -41,6 +54,10 @@ export function CartPanel({
   orderNotes,
   customerName,
   customerPhone,
+  discountKind,
+  discountValue,
+  isDiyafa,
+  diyafaReason,
   tax,
   submitting,
   onChangeQuantity,
@@ -51,20 +68,40 @@ export function CartPanel({
   onOrderNotesChange,
   onCustomerNameChange,
   onCustomerPhoneChange,
+  onDiscountKindChange,
+  onDiscountValueChange,
+  onDiyafaChange,
+  onDiyafaReasonChange,
   onCheckout,
 }: CartPanelProps) {
   const { t } = useTranslate();
 
-  // folded away by default, and it stays open once something is typed. taking a
-  // name is worth two taps when the customer offers one, and worth nothing at
-  // all during a rush - so it never sits between the cashier and the pay button.
+  // agel and diyafa both need a name on the paper, so the fields open themselves
+  const needsCustomer =
+    paymentMethod === "agel" || isDiyafa || customerName !== "" || customerPhone !== "";
   const [customerOpen, setCustomerOpen] = useState(false);
-  const showCustomer = customerOpen || customerName !== "" || customerPhone !== "";
+  const showCustomer = customerOpen || needsCustomer;
 
-  // the same call the server makes at checkout, on the same lines, so the two
-  // cannot disagree about what is owed
-  const money = applyTax(cartTotal(lines), tax);
+  const discountNumber = Number(discountValue);
+  const money = priceSale({
+    lineTotal: cartTotal(lines),
+    tax,
+    discount:
+      !isDiyafa &&
+      discountKind &&
+      Number.isFinite(discountNumber) &&
+      discountNumber > 0
+        ? { kind: discountKind, value: discountNumber }
+        : null,
+    isDiyafa,
+  });
   const itemCount = lines.reduce((sum, line) => sum + line.quantity, 0);
+
+  const blocked =
+    lines.length === 0 ||
+    submitting ||
+    (isDiyafa && !diyafaReason.trim()) ||
+    (paymentMethod === "agel" && !isDiyafa && !customerName.trim());
 
   return (
     <aside className="flex flex-col gap-4 rounded-2xl border border-line bg-raised p-5">
@@ -164,6 +201,74 @@ export function CartPanel({
       <OrderTypeSelect value={orderType} onChange={onOrderTypeChange} />
       <PaymentSelect value={paymentMethod} onChange={onPaymentMethodChange} />
 
+      <div>
+        <p className="text-sm text-muted">{t("cart.discount")}</p>
+        <div className="mt-2 grid grid-cols-3 gap-2">
+          {(
+            [
+              { id: null, label: t("cart.discountNone") },
+              { id: "percent" as const, label: "%" },
+              { id: "fixed" as const, label: "EGP" },
+            ] as const
+          ).map((option) => (
+            <button
+              key={String(option.id)}
+              type="button"
+              disabled={isDiyafa}
+              onClick={() => onDiscountKindChange(option.id)}
+              className={`rounded-xl border px-2 py-2.5 text-sm font-medium disabled:opacity-40 ${
+                discountKind === option.id
+                  ? "border-navy bg-navy text-cream dark:border-accent-surface dark:bg-accent-surface dark:text-accent-ink"
+                  : "border-line bg-surface text-muted"
+              }`}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+        {discountKind && !isDiyafa ? (
+          <input
+            type="number"
+            inputMode="decimal"
+            min="0"
+            step="0.01"
+            value={discountValue}
+            onChange={(event) => onDiscountValueChange(event.target.value)}
+            placeholder={
+              discountKind === "percent"
+                ? t("cart.discountPercentHint")
+                : t("cart.discountFixedHint")
+            }
+            className="mt-2 w-full rounded-xl border border-line bg-surface px-4 py-3 text-base text-ink outline-none focus:border-accent"
+          />
+        ) : null}
+      </div>
+
+      <label className="flex items-start gap-3 rounded-xl border border-line bg-surface px-4 py-3">
+        <input
+          type="checkbox"
+          checked={isDiyafa}
+          onChange={(event) => onDiyafaChange(event.target.checked)}
+          className="mt-1 h-5 w-5 accent-[var(--accent-surface)]"
+        />
+        <span>
+          <span className="block text-sm font-medium">{t("cart.diyafa")}</span>
+          <span className="block text-xs text-muted">{t("cart.diyafaHint")}</span>
+        </span>
+      </label>
+
+      {isDiyafa ? (
+        <label className="block text-sm text-muted">
+          {t("cart.diyafaReason")}
+          <input
+            type="text"
+            value={diyafaReason}
+            onChange={(event) => onDiyafaReasonChange(event.target.value)}
+            className="mt-2 w-full rounded-xl border border-line bg-surface px-4 py-3 text-base text-ink outline-none focus:border-accent"
+          />
+        </label>
+      ) : null}
+
       <label className="block text-sm text-muted">
         {t("cart.orderNote")}
         <input
@@ -177,7 +282,11 @@ export function CartPanel({
 
       {showCustomer ? (
         <div className="flex flex-col gap-2">
-          <span className="text-sm text-muted">{t("cart.customerDetails")}</span>
+          <span className="text-sm text-muted">
+            {paymentMethod === "agel" && !isDiyafa
+              ? t("cart.customerRequired")
+              : t("cart.customerDetails")}
+          </span>
           <input
             type="text"
             value={customerName}
@@ -186,8 +295,6 @@ export function CartPanel({
             className="w-full rounded-xl border border-line bg-surface px-4 py-3 text-base text-ink outline-none focus:border-accent"
           />
           <input
-            // tel, not number: a phone can start with a zero and the tablet
-            // should bring up a keypad rather than a spinner
             type="tel"
             inputMode="tel"
             value={customerPhone}
@@ -207,8 +314,6 @@ export function CartPanel({
       )}
 
       <div className="border-t border-line pt-4">
-        {/* only when there is tax to show. a truck with no tax set up gets the
-            single total line it has always had, unchanged. */}
         {money.tax > 0 ? (
           <div className="mb-2 space-y-1 text-sm text-muted">
             <div className="flex items-center justify-between">
@@ -223,10 +328,21 @@ export function CartPanel({
             </div>
           </div>
         ) : null}
+        {money.discountAmount > 0 ? (
+          <div className="mb-2 flex items-center justify-between text-sm text-muted">
+            <span>{t("cart.discount")}</span>
+            <span className="font-mono">
+              - {formatMoney(money.discountAmount)}
+            </span>
+          </div>
+        ) : null}
+        {isDiyafa ? (
+          <p className="mb-2 text-sm text-accent">{t("cart.diyafaZero")}</p>
+        ) : null}
         <div className="flex items-center justify-between">
           <span className="text-base text-muted">{t("cart.total")}</span>
           <span className="font-mono text-2xl font-semibold">
-            {formatMoney(money.total)}
+            {formatMoney(money.payable)}
           </span>
         </div>
       </div>
@@ -234,7 +350,7 @@ export function CartPanel({
       <button
         type="button"
         onClick={onCheckout}
-        disabled={lines.length === 0 || submitting}
+        disabled={blocked}
         className="w-full rounded-xl bg-navy px-4 py-4 text-lg font-semibold text-cream transition-opacity disabled:opacity-40 dark:bg-accent-surface dark:text-accent-ink"
       >
         {submitting ? t("cart.sending") : t("cart.pay")}

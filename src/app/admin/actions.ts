@@ -756,3 +756,67 @@ export async function setStaffActive(input: {
   revalidatePath("/admin/users");
   return { ok: true, message: input.active ? "account enabled" : "account disabled" };
 }
+
+// collect an agel debt. cashier can ring it; only admin can say it was paid.
+export async function settleAgelDebt(input: {
+  orderId: string;
+  paymentMethod: "cash" | "card" | "instapay";
+}): Promise<ActionResult> {
+  const { supabase, error, userId } = await requireAdmin();
+  if (error) return { ok: false, message: error };
+  if (!userId) return { ok: false, message: "admin only" };
+
+  if (
+    input.paymentMethod !== "cash" &&
+    input.paymentMethod !== "card" &&
+    input.paymentMethod !== "instapay"
+  ) {
+    return { ok: false, message: "pick cash, card or instapay" };
+  }
+
+  const { data: order, error: readError } = await supabase
+    .from("orders")
+    .select(
+      "id, payment_method, agel_settled_at, status, total_amount, customer_name",
+    )
+    .eq("id", input.orderId)
+    .maybeSingle();
+
+  if (readError || !order) {
+    return { ok: false, message: "order not found" };
+  }
+
+  if (order.payment_method !== "agel") {
+    return { ok: false, message: "this order is not agel" };
+  }
+
+  if (order.status === "cancelled") {
+    return { ok: false, message: "cancelled orders cannot be settled" };
+  }
+
+  if (order.agel_settled_at) {
+    return { ok: false, message: "already settled" };
+  }
+
+  const { error: updateError } = await supabase
+    .from("orders")
+    .update({
+      agel_settled_at: new Date().toISOString(),
+      agel_settled_by: userId,
+      agel_settled_payment_method: input.paymentMethod,
+    })
+    .eq("id", input.orderId)
+    .is("agel_settled_at", null);
+
+  if (updateError) {
+    return { ok: false, message: updateError.message };
+  }
+
+  revalidatePath("/admin/debts");
+  revalidatePath("/admin/reports");
+  return {
+    ok: true,
+    message: `settled ${order.customer_name ?? "debt"} · ${input.paymentMethod}`,
+  };
+}
+

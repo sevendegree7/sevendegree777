@@ -265,13 +265,32 @@ function ReceiptPaper({
               </div>
             </div>
           ) : null}
+          {receipt.discountAmount ? (
+            <div className="mb-2 flex justify-between text-xs">
+              <span>{t("receipt.discount")}</span>
+              <span>- {formatMoney(receipt.discountAmount)}</span>
+            </div>
+          ) : null}
+          {receipt.isDiyafa ? (
+            <p className="mb-2 text-center text-xs font-semibold">
+              {t("receipt.diyafa")}
+              {receipt.diyafaReason ? ` · ${receipt.diyafaReason}` : ""}
+            </p>
+          ) : null}
           <div className="flex justify-between text-lg font-bold">
             <span>{t("receipt.total")}</span>
             <span>{formatMoney(receipt.total)}</span>
           </div>
         </div>
       ) : (
-        <div className="mt-3 border-t border-dashed border-neutral-400 pt-2" />
+        <div className="mt-3 border-t border-dashed border-neutral-400 pt-2">
+          {receipt.isDiyafa ? (
+            <p className="text-center text-sm font-semibold">
+              {t("receipt.diyafa")}
+              {receipt.diyafaReason ? ` · ${receipt.diyafaReason}` : ""}
+            </p>
+          ) : null}
+        </div>
       )}
 
       <p className="text-end text-xs text-neutral-700">

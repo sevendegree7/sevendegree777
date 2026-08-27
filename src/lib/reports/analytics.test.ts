@@ -56,6 +56,7 @@ describe("buildReportSummary", () => {
     });
 
     expect(summary.salesTotal).toBe(30.3);
+    expect(summary.taxTotal).toBe(0);
     expect(summary.orderCount).toBe(2);
     expect(summary.averageTicket).toBe(15.15);
     expect(summary.cancelledCount).toBe(1);

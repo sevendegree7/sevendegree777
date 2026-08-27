@@ -65,6 +65,13 @@ export function saleSignature(input: {
   orderType: string;
   paymentMethod: string;
   notes: string;
+  // these change what is charged, so they must change the checkout id
+  discountKind?: string | null;
+  discountValue?: number;
+  isDiyafa?: boolean;
+  diyafaReason?: string;
+  customerName?: string;
+  customerPhone?: string;
 }): string {
   const body = input.lines
     .map((line) =>
@@ -78,7 +85,16 @@ export function saleSignature(input: {
     )
     .join(",");
 
-  return [input.orderType, input.paymentMethod, input.notes.trim(), body].join(
-    "#",
-  );
+  return [
+    input.orderType,
+    input.paymentMethod,
+    input.notes.trim(),
+    input.discountKind ?? "",
+    String(input.discountValue ?? 0),
+    input.isDiyafa ? "1" : "0",
+    (input.diyafaReason ?? "").trim(),
+    (input.customerName ?? "").trim(),
+    (input.customerPhone ?? "").trim(),
+    body,
+  ].join("#");
 }

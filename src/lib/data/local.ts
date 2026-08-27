@@ -8,12 +8,13 @@ import {
 import { cartTotal, lineUnitPrice, type PricedLine } from "@/lib/pos/cart";
 import { modifierAppliesToProduct } from "@/lib/pos/modifiers";
 import { newOrderId } from "@/lib/pos/order-id";
+import { isDiscountKind, priceSale } from "@/lib/pos/pricing";
 import type {
   BoxContent,
   OrderItem,
   SelectedModifier,
 } from "@/types/database.types";
-import { applyTax, TAX_SETTINGS_OFF } from "@/lib/pos/tax";
+import { TAX_SETTINGS_OFF } from "@/lib/pos/tax";
 import { nextLocalTicketNumber } from "@/lib/pos/ticket-counter";
 
 import { readCachedMenu } from "./menu-cache";
@@ -90,6 +91,22 @@ export function createLocalSource(): DataSource {
       // card and instapay are settled on their own device next to the till,
       // not through this app, so an offline sale can still record either one.
       // the method is stored as chosen and uploaded with the rest of the sale.
+
+      const isDiyafa = input.isDiyafa === true;
+      const diyafaReason = (input.diyafaReason ?? "").trim();
+
+      if (isDiyafa && !diyafaReason) {
+        return {
+          ok: false,
+          message: "enter a reason for diyafa (hospitality)",
+        };
+      }
+
+      const customerName = (input.customerName ?? "").trim() || null;
+
+      if (input.paymentMethod === "agel" && !isDiyafa && !customerName) {
+        return { ok: false, message: "agel needs a customer name" };
+      }
 
       const menu = readCachedMenu();
 
@@ -214,10 +231,23 @@ export function createLocalSource(): DataSource {
       // the till hands the rule down with the sale. no connection means no way
       // to ask app_settings, and a paper printed here without the tax on it
       // would not match the one the server prints when this uploads.
-      const tax = applyTax(
-        cartTotal(pricedLines),
-        input.taxSettings ?? TAX_SETTINGS_OFF,
-      );
+      const discount =
+        !isDiyafa &&
+        input.discountKind &&
+        isDiscountKind(input.discountKind) &&
+        Number(input.discountValue) > 0
+          ? {
+              kind: input.discountKind,
+              value: Number(input.discountValue),
+            }
+          : null;
+
+      const priced = priceSale({
+        lineTotal: cartTotal(pricedLines),
+        tax: input.taxSettings ?? TAX_SETTINGS_OFF,
+        discount,
+        isDiyafa,
+      });
       const orderId = newOrderId();
       const takenAt = new Date().toISOString();
       const ticket = nextLocalTicketNumber(new Date(takenAt));
@@ -240,11 +270,19 @@ export function createLocalSource(): DataSource {
       const order: KitchenOrder = {
         id: orderId,
         client_id: input.clientId,
-        total_amount: tax.total,
-        subtotal_amount: tax.subtotal,
-        tax_amount: tax.tax,
-        tax_rate: tax.rate,
-        tax_label: tax.tax > 0 ? tax.label : null,
+        total_amount: priced.payable,
+        subtotal_amount: priced.subtotal,
+        tax_amount: priced.tax,
+        tax_rate: priced.rate,
+        tax_label: priced.tax > 0 ? priced.label : null,
+        discount_kind: priced.discountKind,
+        discount_value: priced.discountKind ? priced.discountValue : null,
+        discount_amount: priced.discountAmount,
+        is_diyafa: isDiyafa,
+        diyafa_reason: isDiyafa ? diyafaReason : null,
+        agel_settled_at: null,
+        agel_settled_by: null,
+        agel_settled_payment_method: null,
         payment_method: input.paymentMethod,
         order_type: input.orderType,
         status: input.kdsEnabled ? "pending" : "completed",
@@ -258,8 +296,8 @@ export function createLocalSource(): DataSource {
         // drawer is open when it lands, which is the honest answer - a sale
         // taken with no internet has no shift of its own to belong to.
         shift_id: null,
-        customer_name: input.customerName ?? null,
-        customer_phone: input.customerPhone ?? null,
+        customer_name: customerName,
+        customer_phone: (input.customerPhone ?? "").trim() || null,
         // stock is pulled by the server on upload, never here
         stock_deducted: false,
         ticket_date: ticket.date,

@@ -54,6 +54,7 @@ const PAYMENT_LABEL: Record<string, string> = {
   cash: "Cash",
   card: "Card",
   instapay: "InstaPay",
+  agel: "Agel",
   unknown: "Unknown",
 };
 

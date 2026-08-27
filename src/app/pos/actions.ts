@@ -5,9 +5,15 @@ import { cartTotal, lineUnitPrice, type PricedLine } from "@/lib/pos/cart";
 import { modifierAppliesToProduct } from "@/lib/pos/modifiers";
 import { isValidOrderId } from "@/lib/pos/order-id";
 import { createClient } from "@/lib/supabase/server";
-import { applyTax, readTaxSettings, type TaxSettings } from "@/lib/pos/tax";
+import { readTaxSettings, type TaxSettings } from "@/lib/pos/tax";
+import {
+  isDiscountKind,
+  priceSale,
+  type DiscountInput,
+} from "@/lib/pos/pricing";
 import type {
   BoxContent,
+  DiscountKind,
   OrderType,
   PaymentMethod,
   SelectedModifier,
@@ -58,6 +64,12 @@ export type CheckoutInput = {
   // "-". stored so the truck can reach its own customers later.
   customerName?: string | null;
   customerPhone?: string | null;
+  // discount after tax. server recomputes the amount from these + the lines.
+  discountKind?: DiscountKind | null;
+  discountValue?: number | null;
+  // hospitality: whole ticket free. reason required when true.
+  isDiyafa?: boolean;
+  diyafaReason?: string | null;
   lines: CheckoutLine[];
 };
 
@@ -65,10 +77,18 @@ export type CheckoutInput = {
 // short enough that a leaning tablet cannot fill the column with one keypress.
 const CUSTOMER_NAME_MAX = 80;
 const CUSTOMER_PHONE_MAX = 32;
+const DIYAF_REASON_MAX = 120;
 
 function tidy(value: string | null | undefined, max: number): string | null {
   const trimmed = (value ?? "").trim();
   return trimmed ? trimmed.slice(0, max) : null;
+}
+
+function readDiscount(input: CheckoutInput): DiscountInput | null {
+  if (!input.discountKind || !isDiscountKind(input.discountKind)) return null;
+  const value = Number(input.discountValue);
+  if (!Number.isFinite(value) || value <= 0) return null;
+  return { kind: input.discountKind, value };
 }
 
 export type CheckoutResult =
@@ -100,6 +120,29 @@ export async function createOrder(
 
   if (input.orderId !== undefined && !isValidOrderId(input.orderId)) {
     return { ok: false, message: "this sale has an invalid id" };
+  }
+
+  const isDiyafa = input.isDiyafa === true;
+  const diyafaReason = tidy(input.diyafaReason, DIYAF_REASON_MAX);
+
+  if (isDiyafa && !diyafaReason) {
+    return { ok: false, message: "enter a reason for diyafa (hospitality)" };
+  }
+
+  const customerName = tidy(input.customerName, CUSTOMER_NAME_MAX);
+  const customerPhone = tidy(input.customerPhone, CUSTOMER_PHONE_MAX);
+
+  if (input.paymentMethod === "agel" && !isDiyafa && !customerName) {
+    return { ok: false, message: "agel needs a customer name" };
+  }
+
+  if (
+    input.paymentMethod !== "cash" &&
+    input.paymentMethod !== "card" &&
+    input.paymentMethod !== "instapay" &&
+    input.paymentMethod !== "agel"
+  ) {
+    return { ok: false, message: "pick a payment method" };
   }
 
   if (
@@ -323,10 +366,15 @@ export async function createOrder(
 
   const initialStatus = settings?.kds_enabled ? "pending" : "completed";
 
-  // the tax rule as it stands right now, applied once, then frozen onto the
-  // row below. from this point the numbers are history, not a calculation.
-  const tax = applyTax(lineTotal, readTaxSettings(settings));
-  const total = tax.total;
+  // the tax rule as it stands right now, then discount after tax, then diyafa
+  // zeros the payable. from this point the numbers are history.
+  const priced = priceSale({
+    lineTotal,
+    tax: readTaxSettings(settings),
+    discount: isDiyafa ? null : readDiscount(input),
+    isDiyafa,
+  });
+  const total = priced.payable;
 
   // which drawer this sale belongs to.
   //
@@ -374,12 +422,17 @@ export async function createOrder(
       ...(input.orderId ? { id: input.orderId } : {}),
       client_id: input.clientId,
       total_amount: total,
-      subtotal_amount: tax.subtotal,
-      tax_amount: tax.tax,
-      tax_rate: tax.rate,
+      subtotal_amount: priced.subtotal,
+      tax_amount: priced.tax,
+      tax_rate: priced.rate,
       // only worth keeping when something was charged. a label with no tax
       // behind it would print an empty line on the paper.
-      tax_label: tax.tax > 0 ? tax.label : null,
+      tax_label: priced.tax > 0 ? priced.label : null,
+      discount_kind: priced.discountKind,
+      discount_value: priced.discountKind ? priced.discountValue : null,
+      discount_amount: priced.discountAmount,
+      is_diyafa: isDiyafa,
+      diyafa_reason: isDiyafa ? diyafaReason : null,
       payment_method: input.paymentMethod,
       order_type: input.orderType,
       status: initialStatus,
@@ -387,8 +440,8 @@ export async function createOrder(
       created_by: user.id,
       created_by_name: profile.name,
       shift_id: shiftId,
-      customer_name: tidy(input.customerName, CUSTOMER_NAME_MAX),
-      customer_phone: tidy(input.customerPhone, CUSTOMER_PHONE_MAX),
+      customer_name: customerName,
+      customer_phone: customerPhone,
       ticket_date: ticketDate,
       ticket_number: allocated,
     })

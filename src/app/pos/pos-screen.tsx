@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 
 import { ConnectionBanner } from "@/components/connection-banner";
 import { OfflineSync } from "@/components/offline-sync";
@@ -36,6 +36,7 @@ import { primeTicketCounter } from "@/lib/pos/ticket-counter";
 import type {
   AppSettings,
   BoxContent,
+  DiscountKind,
   OrderType,
   PaymentMethod,
   Product,
@@ -126,6 +127,10 @@ export function PosScreen({
   // column full of "-", and no sale is ever worth blocking for a phone number.
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
+  const [discountKind, setDiscountKind] = useState<DiscountKind | null>(null);
+  const [discountValue, setDiscountValue] = useState("");
+  const [isDiyafa, setIsDiyafa] = useState(false);
+  const [diyafaReason, setDiyafaReason] = useState("");
   const [shift, setShift] = useState<Shift | null>(initialShift);
   const [shiftReport, setShiftReport] = useState<ShiftReport | null>(
     initialShiftReport,
@@ -146,6 +151,9 @@ export function PosScreen({
   const [saleSeed, setSaleSeed] = useState(() => newOrderId());
   const [feedback, setFeedback] = useState<Feedback>(null);
   const [submitting, startSubmit] = useTransition();
+  // useTransition's flag flips a beat late on a double tap. this ref closes
+  // the door the moment Pay is pressed, so a second confirm cannot start.
+  const checkoutLock = useRef(false);
 
   const { t } = useTranslate();
 
@@ -301,8 +309,26 @@ export function PosScreen({
         orderType,
         paymentMethod,
         notes: orderNotes,
+        discountKind,
+        discountValue: Number(discountValue) || 0,
+        isDiyafa,
+        diyafaReason,
+        customerName,
+        customerPhone,
       })}`,
-    [saleSeed, cart, orderType, paymentMethod, orderNotes],
+    [
+      saleSeed,
+      cart,
+      orderType,
+      paymentMethod,
+      orderNotes,
+      discountKind,
+      discountValue,
+      isDiyafa,
+      diyafaReason,
+      customerName,
+      customerPhone,
+    ],
   );
 
   // read the drawer again after a sale lands. the numbers on the bar have moved,
@@ -431,7 +457,17 @@ export function PosScreen({
   }
 
   function openConfirm() {
-    if (cart.length === 0) {
+    if (cart.length === 0 || checkoutLock.current || submitting) {
+      return;
+    }
+
+    if (isDiyafa && !diyafaReason.trim()) {
+      setFeedback({ kind: "error", text: t("cart.diyafaReasonNeeded") });
+      return;
+    }
+
+    if (paymentMethod === "agel" && !isDiyafa && !customerName.trim()) {
+      setFeedback({ kind: "error", text: t("cart.agelNameNeeded") });
       return;
     }
 
@@ -440,6 +476,12 @@ export function PosScreen({
   }
 
   function submitOrder() {
+    if (checkoutLock.current || submitting) {
+      return;
+    }
+
+    checkoutLock.current = true;
+
     const lines: CheckoutLine[] = cart.map((line) => ({
       productId: line.productId,
       quantity: line.quantity,
@@ -447,6 +489,8 @@ export function PosScreen({
       boxContents: line.boxContents,
       notes: line.notes,
     }));
+
+    const discountNumber = Number(discountValue);
 
     startSubmit(async () => {
       // read once, before the await. the connection can flip while the sale is
@@ -466,6 +510,16 @@ export function PosScreen({
         taxSettings,
         customerName: customerName.trim() ? customerName.trim() : null,
         customerPhone: customerPhone.trim() ? customerPhone.trim() : null,
+        discountKind: isDiyafa ? null : discountKind,
+        discountValue:
+          !isDiyafa &&
+          discountKind &&
+          Number.isFinite(discountNumber) &&
+          discountNumber > 0
+            ? discountNumber
+            : null,
+        isDiyafa,
+        diyafaReason: isDiyafa ? diyafaReason.trim() : null,
         lines,
       };
 
@@ -481,6 +535,7 @@ export function PosScreen({
           : await source.submitOrder(checkout);
 
         if (!result.ok) {
+          checkoutLock.current = false;
           setConfirmOpen(false);
           setFeedback({ kind: "error", text: result.message });
           return;
@@ -500,9 +555,14 @@ export function PosScreen({
         setOrderNotes("");
         setCustomerName("");
         setCustomerPhone("");
+        setDiscountKind(null);
+        setDiscountValue("");
+        setIsDiyafa(false);
+        setDiyafaReason("");
         setConfirmOpen(false);
         setEditing(null);
         setSaleSeed(newOrderId());
+        checkoutLock.current = false;
         primeTicketCounter(result.ticketDate, result.ticketNumber);
         void refreshShift();
         setFeedback(
@@ -527,7 +587,8 @@ export function PosScreen({
 
         // the corrected sale gets a fresh receipt, read back from the server so
         // the paper shows the prices that were actually charged rather than the
-        // ones the browser was holding.
+        // ones the browser was holding. print can fail; the sale stays and the
+        // cashier reprints from history.
         {
           const reread = await source.loadKitchenOrder(result.orderId);
 
@@ -539,6 +600,7 @@ export function PosScreen({
         // the request never came back, so we do not know if the order landed.
         // the cart is kept exactly as it is: pressing pay again sends the same
         // client_id, so the db returns that first order instead of a second one.
+        checkoutLock.current = false;
         setConfirmOpen(false);
         setFeedback({ kind: "error", key: "pos.unreachable" });
         void checkConnection();
@@ -693,6 +755,10 @@ export function PosScreen({
           orderNotes={orderNotes}
           customerName={customerName}
           customerPhone={customerPhone}
+          discountKind={discountKind}
+          discountValue={discountValue}
+          isDiyafa={isDiyafa}
+          diyafaReason={diyafaReason}
           tax={taxSettings}
           submitting={submitting}
           onChangeQuantity={changeQuantity}
@@ -707,6 +773,10 @@ export function PosScreen({
           onOrderNotesChange={setOrderNotes}
           onCustomerNameChange={setCustomerName}
           onCustomerPhoneChange={setCustomerPhone}
+          onDiscountKindChange={setDiscountKind}
+          onDiscountValueChange={setDiscountValue}
+          onDiyafaChange={setIsDiyafa}
+          onDiyafaReasonChange={setDiyafaReason}
           onCheckout={openConfirm}
         />
       </div>

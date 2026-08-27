@@ -7,6 +7,7 @@ import {
   buildReportSummary,
   periodDays,
 } from "@/lib/reports/analytics";
+import { buildJared, filterLinesByProducts } from "@/lib/reports/jared";
 import {
   startOfTruckDayIso,
   truckDateRange,
@@ -25,10 +26,21 @@ export default async function AdminReportsPage({
     period?: string;
     from?: string;
     to?: string;
+    category?: string;
+    product?: string | string[];
   }>;
 }) {
   const params = await searchParams;
   const selectedCashier = params.cashier ?? "";
+  const selectedCategory = params.category ?? "";
+  const selectedProducts = new Set(
+    (Array.isArray(params.product)
+      ? params.product
+      : params.product
+        ? [params.product]
+        : []
+    ).filter(Boolean),
+  );
   // an explicit range wins over the chips. a junk or half-filled one is simply
   // ignored, so a mistyped date shows the usual 30 days rather than nothing.
   const range = truckDateRange(params.from, params.to);
@@ -45,7 +57,7 @@ export default async function AdminReportsPage({
   let ordersQuery = supabase
     .from("orders")
     .select(
-      "id, total_amount, payment_method, order_type, status, created_at, created_by",
+      "id, total_amount, tax_amount, discount_amount, is_diyafa, payment_method, order_type, status, created_at, created_by",
     )
     .gte("created_at", since)
     .neq("status", "cancelled")
@@ -72,18 +84,22 @@ export default async function AdminReportsPage({
     { data: orders, error },
     { count: cancelledCount },
     { data: cashiers },
+    { data: categories },
+    { data: products },
   ] = await Promise.all([
     ordersQuery,
     cancelledQuery,
-    // everyone who can ring a sale, not just the `cashier` role. the owner
-    // takes orders too, and filtering this list to cashiers left their tickets
-    // falling back to the generic "Cashier" label in `analytics.ts` - so two
-    // different people read as one person in the takings.
     supabase
       .from("profiles")
       .select("id, name, is_active")
       .in("role", ["cashier", "admin"])
       .order("name"),
+    supabase
+      .from("categories")
+      .select("id, name")
+      .eq("is_active", true)
+      .order("sort_order"),
+    supabase.from("products").select("id, name, category_id").order("name"),
   ]);
 
   const list = orders ?? [];
@@ -93,13 +109,29 @@ export default async function AdminReportsPage({
     orderIds.length > 0
       ? await supabase
           .from("order_items")
-          .select("product_name, quantity, unit_price, order_id")
+          .select("product_id, product_name, quantity, unit_price, order_id")
           .in("order_id", orderIds)
       : { data: [] };
+
+  let wasteQuery = supabase
+    .from("product_waste_logs")
+    .select("product_id, quantity, created_at")
+    .gte("created_at", since);
+
+  if (range) {
+    wasteQuery = wasteQuery.lt("created_at", range.until);
+  }
+
+  const { data: wasteRows } = await wasteQuery;
 
   const cashierNames: Record<string, string> = {};
   for (const cashier of cashiers ?? []) {
     cashierNames[cashier.id] = cashier.name;
+  }
+
+  const productNames: Record<string, string> = {};
+  for (const product of products ?? []) {
+    productNames[product.id] = product.name;
   }
 
   const summary = buildReportSummary({
@@ -108,6 +140,39 @@ export default async function AdminReportsPage({
     lines: lines ?? [],
     cashierNames,
   });
+
+  const categoryProductIds = new Set(
+    (products ?? [])
+      .filter(
+        (product) =>
+          !selectedCategory || product.category_id === selectedCategory,
+      )
+      .map((product) => product.id),
+  );
+
+  const productFilter =
+    selectedProducts.size > 0
+      ? selectedProducts
+      : selectedCategory
+        ? categoryProductIds
+        : null;
+
+  const categoryRows = filterLinesByProducts(lines ?? [], productFilter);
+
+  const jared = buildJared({
+    sold: (lines ?? []).map((line) => ({
+      product_id: line.product_id,
+      product_name: line.product_name,
+      quantity: line.quantity,
+    })),
+    waste: (wasteRows ?? []).map((row) => ({
+      product_id: row.product_id,
+      quantity: Number(row.quantity),
+    })),
+    names: productNames,
+  }).filter(
+    (row) => !productFilter || productFilter.has(row.productId),
+  );
 
   const periodLabel = range
     ? range.from === range.to
@@ -241,14 +306,18 @@ export default async function AdminReportsPage({
               hint={`${summary.orderCount} orders`}
             />
             <Kpi
-              label="Average ticket"
-              value={formatMoney(summary.averageTicket)}
-              hint="Per completed order"
+              label="Tax collected"
+              value={formatMoney(summary.taxTotal)}
+              hint={
+                summary.discountTotal > 0
+                  ? `Discounts ${formatMoney(summary.discountTotal)}`
+                  : "From orders in this range"
+              }
             />
             <Kpi
               label="Orders"
               value={String(summary.orderCount)}
-              hint={`${summary.cancelledCount} cancelled`}
+              hint={`${summary.cancelledCount} cancelled · ${summary.diyafaCount} diyafa`}
             />
             <Kpi
               label="Top seller"
@@ -323,6 +392,136 @@ export default async function AdminReportsPage({
               )}
             </section>
           </div>
+
+          <section className="rounded-2xl border border-line bg-raised p-5">
+            <h2 className="font-display text-lg font-semibold">
+              Category / items
+            </h2>
+            <p className="mt-1 text-sm text-muted">
+              Pick a category, optionally narrow to specific items, then filter.
+            </p>
+            <form className="print-hide mt-4 flex flex-col gap-3">
+              <input type="hidden" name="period" value={range ? "30" : period} />
+              {range ? (
+                <>
+                  <input type="hidden" name="from" value={range.from} />
+                  <input type="hidden" name="to" value={range.to} />
+                </>
+              ) : null}
+              {selectedCashier ? (
+                <input type="hidden" name="cashier" value={selectedCashier} />
+              ) : null}
+              <label className="text-sm">
+                Category
+                <select
+                  name="category"
+                  defaultValue={selectedCategory}
+                  className="mt-1 w-full max-w-md rounded-xl border border-line bg-surface px-3 py-3"
+                >
+                  <option value="">All categories</option>
+                  {(categories ?? []).map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {category.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {(products ?? []).filter(
+                (product) =>
+                  !selectedCategory || product.category_id === selectedCategory,
+              ).length > 0 ? (
+                <fieldset className="max-h-40 overflow-y-auto rounded-xl border border-line p-3">
+                  <legend className="px-1 text-sm text-muted">
+                    Items (optional)
+                  </legend>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {(products ?? [])
+                      .filter(
+                        (product) =>
+                          !selectedCategory ||
+                          product.category_id === selectedCategory,
+                      )
+                      .map((product) => (
+                        <label
+                          key={product.id}
+                          className="flex items-center gap-2 text-sm"
+                        >
+                          <input
+                            type="checkbox"
+                            name="product"
+                            value={product.id}
+                            defaultChecked={selectedProducts.has(product.id)}
+                          />
+                          <span className="capitalize">{product.name}</span>
+                        </label>
+                      ))}
+                  </div>
+                </fieldset>
+              ) : null}
+              <button
+                type="submit"
+                className="w-fit rounded-xl bg-navy px-4 py-2.5 text-sm font-semibold text-cream dark:bg-accent-surface dark:text-accent-ink"
+              >
+                Apply item filter
+              </button>
+            </form>
+
+            {categoryRows.length === 0 ? (
+              <p className="mt-4 text-sm text-muted">No lines in this filter</p>
+            ) : (
+              <ul className="mt-4 space-y-2">
+                {categoryRows.map((row) => (
+                  <li
+                    key={row.name}
+                    className="flex items-baseline justify-between gap-3 text-sm"
+                  >
+                    <span className="capitalize">{row.name}</span>
+                    <span className="font-mono text-muted">
+                      {row.qty} · {formatMoney(row.revenue)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <section className="rounded-2xl border border-line bg-raised p-5">
+            <h2 className="font-display text-lg font-semibold">
+              Inventory jared
+            </h2>
+            <p className="mt-1 text-sm text-muted">
+              Units sold plus finished-goods waste in this range. Same category
+              / item filter as above.
+            </p>
+            {jared.length === 0 ? (
+              <p className="mt-4 text-sm text-muted">No stock movement yet</p>
+            ) : (
+              <div className="mt-4 overflow-x-auto">
+                <table className="w-full min-w-[28rem] text-start text-sm">
+                  <thead>
+                    <tr className="border-b border-line text-muted">
+                      <th className="py-2 font-medium">Item</th>
+                      <th className="py-2 font-medium">Sold</th>
+                      <th className="py-2 font-medium">Waste</th>
+                      <th className="py-2 font-medium">Out</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {jared.map((row) => (
+                      <tr key={row.productId} className="border-b border-line">
+                        <td className="py-2 capitalize">{row.name}</td>
+                        <td className="py-2 font-mono">{row.sold}</td>
+                        <td className="py-2 font-mono">{row.waste}</td>
+                        <td className="py-2 font-mono font-semibold">
+                          {row.totalOut}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
         </div>
       )}
     </AdminShell>

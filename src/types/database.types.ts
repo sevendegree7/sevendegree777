@@ -10,7 +10,13 @@ export type Json =
   | Json[];
 
 export type UserRole = "admin" | "cashier" | "kitchen";
-export type PaymentMethod = "cash" | "card" | "instapay";
+export type PaymentMethod = "cash" | "card" | "instapay" | "agel";
+
+// how a discount was taken off the taxed total. null means none.
+export type DiscountKind = "percent" | "fixed";
+
+// cash/card/instapay only - never agel. used when collecting a debt.
+export type SettlePaymentMethod = "cash" | "card" | "instapay";
 export type OrderType = "takeaway" | "dine_in" | "talabat";
 export type OrderStatus =
   | "pending"
@@ -106,6 +112,16 @@ export type Order = {
   tax_amount?: number | null;
   tax_rate?: number | null;
   tax_label?: string | null;
+  // discount after tax. optional on sales from before this existed.
+  discount_kind?: DiscountKind | null;
+  discount_value?: number | null;
+  discount_amount?: number | null;
+  is_diyafa?: boolean;
+  diyafa_reason?: string | null;
+  // agel settle: null settled_at means still owing
+  agel_settled_at?: string | null;
+  agel_settled_by?: string | null;
+  agel_settled_payment_method?: SettlePaymentMethod | null;
   payment_method: PaymentMethod | null;
   order_type: OrderType;
   status: OrderStatus;
@@ -329,6 +345,14 @@ export type Database = {
           tax_amount?: number | null;
           tax_rate?: number | null;
           tax_label?: string | null;
+          discount_kind?: DiscountKind | null;
+          discount_value?: number | null;
+          discount_amount?: number | null;
+          is_diyafa?: boolean;
+          diyafa_reason?: string | null;
+          agel_settled_at?: string | null;
+          agel_settled_by?: string | null;
+          agel_settled_payment_method?: SettlePaymentMethod | null;
           payment_method?: PaymentMethod | null;
           order_type?: OrderType;
           status?: OrderStatus;
@@ -352,6 +376,14 @@ export type Database = {
           tax_amount?: number | null;
           tax_rate?: number | null;
           tax_label?: string | null;
+          discount_kind?: DiscountKind | null;
+          discount_value?: number | null;
+          discount_amount?: number | null;
+          is_diyafa?: boolean;
+          diyafa_reason?: string | null;
+          agel_settled_at?: string | null;
+          agel_settled_by?: string | null;
+          agel_settled_payment_method?: SettlePaymentMethod | null;
           payment_method?: PaymentMethod | null;
           order_type?: OrderType;
           status?: OrderStatus;
