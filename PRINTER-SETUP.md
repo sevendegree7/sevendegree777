@@ -11,16 +11,32 @@ same steps work, only step 3 changes.
 
 ## the truck's printer
 
-an **Xprinter** on ethernet, confirmed working on the network:
+an **Xprinter XP-80T** on ethernet, confirmed working on the network:
 
 | | |
 |---|---|
+| model | `XP-80T` - the `T` is the ethernet+usb variant (`C` is bluetooth, plain `XP-80` is usb only) |
+| serial | `80TBKLU1KF50068` |
 | ip | `192.168.8.248` |
 | port | `9100` |
 | gateway | `192.168.8.1` |
 | dhcp | **disabled** - the address is static and will not move |
 | config page | `http://192.168.8.248` in any browser on the same network |
 | mac | `00-61-42-3D-0B-35` |
+| paper | 80mm, 576 dots/line, 200mm/s |
+| cutter | **auto cutter, fitted** |
+| drawer port | **24V 1A**, on the back |
+
+two of those matter more than they look. **the cutter is real hardware that is
+present** - so a sale that comes off the roll uncut is the app not sending the
+command, never the printer refusing it. and **the drawer port is wired and
+powered**, which is why `Cash Open` on the config page works.
+
+what the XP-80T does *not* have is any of the things android looks for on its
+own: **no IPP, no mDNS/bonjour, no AirPrint, no Mopria.** the ethernet port is
+there for raw ESC/POS on 9100 and nothing else. android discovers printers by
+mDNS, so it will never find this one, and no setting on either device changes
+that. it is the whole reason a bridge app exists in this setup at all.
 
 dhcp being off is the good outcome: the printer keeps that address across power
 cycles, so nothing has to be reserved on the router. the cost is that it is
