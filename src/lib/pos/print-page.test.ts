@@ -36,19 +36,20 @@ describe("parseMm", () => {
 
 describe("pageHeightMm", () => {
   it("rounds up and adds a tail, so the last line is never clipped", () => {
-    // 400px = 105.83mm -> 106 rounded up, + 4mm slack + 15mm cutter gap
-    expect(pageHeightMm(400)).toBe(125);
+    // 400px = 105.83mm -> 106 rounded up, + 4mm slack + 35mm cutter gap
+    expect(pageHeightMm(400)).toBe(145);
   });
 
   it("leaves enough page below the receipt for the blade to clear it", () => {
-    // the blade is ~15mm downstream of the print head, so a page that ends at
-    // the last line is cut 15mm short of it and the bottom of the receipt is
-    // left inside the printer. this is the whole reason the page is not sized
-    // flush to the measurement.
+    // the blade is downstream of the print head, so a page that ends at the
+    // last line is cut short of it and the bottom of the receipt is left inside
+    // the printer. this is the whole reason the page is not sized flush to the
+    // measurement. 35mm is what the truck's printer actually needed - it was
+    // still cutting inside the receipt at 15mm.
     for (const px of [200, 400, 1200]) {
       const height = pageHeightMm(px);
       expect(height).not.toBeNull();
-      expect(height! - pxToMm(px)).toBeGreaterThanOrEqual(15);
+      expect(height! - pxToMm(px)).toBeGreaterThanOrEqual(35);
     }
   });
 
@@ -72,7 +73,7 @@ describe("pageHeightMm", () => {
 describe("receiptPageRule", () => {
   it("sizes the page to the roll's width and the receipt's length", () => {
     expect(receiptPageRule(80, 400)).toBe(
-      "@page { size: 80mm 125mm; margin: 0; }",
+      "@page { size: 80mm 145mm; margin: 0; }",
     );
   });
 

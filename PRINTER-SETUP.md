@@ -89,10 +89,16 @@ of the receipt - the bottom of it stays inside the printer and reappears as a
 stub on top of the next sale.
 
 the usual fix is `feed lines before cut` in the print-service app. **RawBT has
-no such field**, so the till pays for the feed itself: it sizes the page 19mm
+no such field**, so the till pays for the feed itself: it sizes the page 39mm
 longer than the receipt it measured, and the printer has to wind through that
-before the job ends. see `CUTTER_GAP_MM` in `src/lib/pos/print-page.ts` - that
-is the number to change if a future printer has a different blade distance.
+before the job ends.
+
+that 39mm is `CUTTER_GAP_MM + SLACK_MM` in `src/lib/pos/print-page.ts`, and it
+was found on this printer rather than read off a spec - the 15mm usually quoted
+for an 80mm unit was not enough and still cut inside the receipt. **if the truck
+ever changes printer, this is the number to re-tune**: raise it while the last
+line is still being left inside, lower it if the blank stub under the total gets
+longer than about two centimetres.
 
 **4. turn RawBT on as a print service.**
 `Settings → Connected devices → Printing → Print services → RawBT → ON`.

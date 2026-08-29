@@ -49,10 +49,12 @@ const SLACK_MM = 4;
 // here instead: page the printer still has to wind through before the job ends,
 // which walks the end of the receipt out past the blade.
 //
-// 15mm is the usual head-to-blade distance on an 80mm unit. short of it the
-// last line is left in the printer; over it costs nothing but a stub of blank
-// roll, so this errs long.
-const CUTTER_GAP_MM = 15;
+// 15mm is the usual head-to-blade distance quoted for an 80mm unit. the truck's
+// xprinter needs more than that - at 15mm it still cut inside the receipt - so
+// this is the figure that was arrived at on the actual hardware, which is the
+// only figure worth trusting. short of it the last line is left in the printer;
+// over it costs nothing but a stub of blank roll, so this errs long.
+const CUTTER_GAP_MM = 35;
 
 const TAIL_MM = SLACK_MM + CUTTER_GAP_MM;
 
