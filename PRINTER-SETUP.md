@@ -80,9 +80,19 @@ setting is buried, or missing. see `src/lib/pos/print-job.ts`. the visible cost
 is that the print dialog opens once per copy - two taps on a two-copy sale.
 
 if the app does expose `cut paper` / `after each page`, setting it changes
-nothing for the better; leave it alone. `feed lines before cut` around `3` is
-still worth setting if it is there: the cutter blade sits a few millimetres
-above the print head, so without the feed the last line is sliced in half.
+nothing for the better; leave it alone.
+
+**about the bottom of the slip.** the cutter blade sits about 15mm *downstream*
+of the print head, so the paper under the blade has already gone past the head.
+cut the moment the last line is printed and the cut lands 15mm short of the end
+of the receipt - the bottom of it stays inside the printer and reappears as a
+stub on top of the next sale.
+
+the usual fix is `feed lines before cut` in the print-service app. **RawBT has
+no such field**, so the till pays for the feed itself: it sizes the page 19mm
+longer than the receipt it measured, and the printer has to wind through that
+before the job ends. see `CUTTER_GAP_MM` in `src/lib/pos/print-page.ts` - that
+is the number to change if a future printer has a different blade distance.
 
 **4. turn RawBT on as a print service.**
 `Settings → Connected devices → Printing → Print services → RawBT → ON`.
@@ -116,8 +126,10 @@ look at these four things on the paper, in this order:
 
 the page size itself is not something you set. the till measures the receipt
 just before printing and writes `@page { size: 80mm <height>mm; margin: 0 }`,
-so the page ends exactly where the receipt ends. that is what stops the roll
-feeding a hand's width of blank paper after every sale.
+so the page ends a blade's distance past the end of the receipt and no further.
+that is what stops the roll feeding a hand's width of blank paper after every
+sale, while still leaving enough tail for the cut to land clear of the last
+line.
 
 ---
 

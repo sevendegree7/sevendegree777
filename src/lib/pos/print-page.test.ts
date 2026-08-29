@@ -35,9 +35,21 @@ describe("parseMm", () => {
 });
 
 describe("pageHeightMm", () => {
-  it("rounds up and adds slack, so the last line is never clipped", () => {
-    // 400px = 105.83mm -> 106 rounded up, + 4mm slack
-    expect(pageHeightMm(400)).toBe(110);
+  it("rounds up and adds a tail, so the last line is never clipped", () => {
+    // 400px = 105.83mm -> 106 rounded up, + 4mm slack + 15mm cutter gap
+    expect(pageHeightMm(400)).toBe(125);
+  });
+
+  it("leaves enough page below the receipt for the blade to clear it", () => {
+    // the blade is ~15mm downstream of the print head, so a page that ends at
+    // the last line is cut 15mm short of it and the bottom of the receipt is
+    // left inside the printer. this is the whole reason the page is not sized
+    // flush to the measurement.
+    for (const px of [200, 400, 1200]) {
+      const height = pageHeightMm(px);
+      expect(height).not.toBeNull();
+      expect(height! - pxToMm(px)).toBeGreaterThanOrEqual(15);
+    }
   });
 
   it("never returns a page shorter than a ticket number block", () => {
@@ -60,7 +72,7 @@ describe("pageHeightMm", () => {
 describe("receiptPageRule", () => {
   it("sizes the page to the roll's width and the receipt's length", () => {
     expect(receiptPageRule(80, 400)).toBe(
-      "@page { size: 80mm 110mm; margin: 0; }",
+      "@page { size: 80mm 125mm; margin: 0; }",
     );
   });
 

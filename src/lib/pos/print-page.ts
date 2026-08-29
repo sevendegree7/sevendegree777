@@ -7,8 +7,9 @@
 // receipt per 30cm of roll.
 //
 // so the height is measured off the rendered receipt just before printing and
-// written into an `@page` rule. the page then ends where the receipt ends, on a
-// thermal roll and on a desktop printer alike.
+// written into an `@page` rule. the page then ends just past where the receipt
+// ends - see `CUTTER_GAP_MM` for what "just past" is buying - on a thermal roll
+// and on a desktop printer alike.
 
 export const PAGE_STYLE_ID = "receipt-page-size";
 
@@ -33,8 +34,27 @@ export function parseMm(value: string): number | null {
 }
 
 // a couple of millimetres so a rounded-down measurement cannot clip the last
-// line, and so the cutter - which sits above the print head - is clear of it
+// line
 const SLACK_MM = 4;
+
+// clearing the cutter.
+//
+// the blade sits downstream of the print head, so the paper under the blade has
+// already passed the head. cut the instant the last line is printed and the cut
+// lands a blade's distance *before* the end of the receipt - the bottom of it
+// stays inside the printer and comes out as a stub on top of the next sale.
+//
+// print-service apps normally solve this with a "feed lines before cut"
+// setting. RawBT on the truck's tablet has no such field, so the feed is bought
+// here instead: page the printer still has to wind through before the job ends,
+// which walks the end of the receipt out past the blade.
+//
+// 15mm is the usual head-to-blade distance on an 80mm unit. short of it the
+// last line is left in the printer; over it costs nothing but a stub of blank
+// roll, so this errs long.
+const CUTTER_GAP_MM = 15;
+
+const TAIL_MM = SLACK_MM + CUTTER_GAP_MM;
 
 // a receipt shorter than this is a measurement that went wrong, not a real
 // sale. the ticket number block alone is taller.
@@ -47,7 +67,7 @@ const MAX_HEIGHT_MM = 1500;
 export function pageHeightMm(tallestPx: number): number | null {
   if (!Number.isFinite(tallestPx) || tallestPx <= 0) return null;
 
-  const height = Math.ceil(pxToMm(tallestPx)) + SLACK_MM;
+  const height = Math.ceil(pxToMm(tallestPx)) + TAIL_MM;
   if (height > MAX_HEIGHT_MM) return null;
 
   return Math.max(height, MIN_HEIGHT_MM);
