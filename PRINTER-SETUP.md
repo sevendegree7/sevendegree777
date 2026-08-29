@@ -146,6 +146,33 @@ line.
 
 ---
 
+## the cut and the cash drawer
+
+RawBT on the truck's tablet has **no cut setting and no drawer setting** - the
+printer profile ends at the driver list, and there is no xprinter entry in it
+(`ESC/POS general` is correct and should be left alone; everything else on that
+list is a label language or a pocket-printer protocol).
+
+so both have to be sent as commands. a printed page cannot carry one, but RawBT
+takes a job a second way: an `intent:` link carrying base64 ESC/POS, which it
+hands to the printer unaltered. that is not blocked by the https→http rule
+below, because it is a link handed to an app on the same device rather than a
+request to an address.
+
+`/admin/settings` has two links that do exactly this - **Open the cash drawer**
+and **Feed and cut**. tap them on the tablet, standing at the printer:
+
+- **both work** → the channel is open. the drawer can then move onto the sale
+  itself, and the cut can stop depending on where the page ends.
+- **neither works** → RawBT's link entry is not available in this build, and no
+  amount of code on the till changes that. the honest answers left are the
+  printer's own web page (`Cash Open`, `Cutter Paper` - manual, but it works
+  today) or the local bridge described at the bottom of this file.
+
+the bytes are in `src/lib/pos/rawbt.ts`: `ESC p 0 25 250` for the drawer,
+`ESC d 4` + `GS V 66 0` for a feed and a partial cut. they are android and
+chrome only - on a desktop the links do nothing, which is not a fault.
+
 ## the two things this setup does not do
 
 **it does not open the cash drawer.** the drawer is wired into the printer's

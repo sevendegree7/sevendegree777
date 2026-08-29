@@ -2,6 +2,7 @@ import { AdminShell } from "@/components/admin-shell";
 import { createClient } from "@/lib/supabase/server";
 import type { AppSettings } from "@/types/database.types";
 
+import { PrinterCommands } from "./printer-commands";
 import { SettingsForm } from "./settings-form";
 
 export default async function AdminSettingsPage() {
@@ -27,7 +28,10 @@ export default async function AdminSettingsPage() {
           {error.message}. apply the launch-hardening migration first.
         </p>
       ) : null}
-      <SettingsForm settings={settings} />
+      <div className="max-w-2xl space-y-4">
+        <SettingsForm settings={settings} />
+        <PrinterCommands />
+      </div>
     </AdminShell>
   );
 }
