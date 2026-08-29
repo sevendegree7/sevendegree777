@@ -46,17 +46,20 @@ const SLACK_MM = 4;
 //
 // print-service apps normally solve this with a "feed lines before cut"
 // setting. RawBT on the truck's tablet has no such field, so the feed is bought
-// here instead: page the printer still has to wind through before the job ends,
-// which walks the end of the receipt out past the blade.
+// in the page instead: length the printer has to wind through before the job
+// ends, which walks the end of the receipt out past the blade.
 //
-// 15mm is the usual head-to-blade distance quoted for an 80mm unit. the truck's
-// xprinter needs more than that - at 15mm it still cut inside the receipt - so
-// this is the figure that was arrived at on the actual hardware, which is the
-// only figure worth trusting. short of it the last line is left in the printer;
-// over it costs nothing but a stub of blank roll, so this errs long.
-const CUTTER_GAP_MM = 35;
+// that length cannot be blank. RawBT trims trailing white off a page before
+// sending it, so empty tail is thrown away and the feed goes with it - which is
+// why raising this number had no effect at all until the tail was given
+// something to print. the ink is `.receipt-cut-tail` in globals.css and the
+// height is its `--receipt-cut-tail`, read back here so one number sizes both
+// the block and the page that has to hold it.
+//
+// only used when that property cannot be read. keep it equal to the css.
+const FALLBACK_TAIL_MM = 35;
 
-const TAIL_MM = SLACK_MM + CUTTER_GAP_MM;
+export const TAIL_PROPERTY = "--receipt-cut-tail";
 
 // a receipt shorter than this is a measurement that went wrong, not a real
 // sale. the ticket number block alone is taller.
@@ -66,17 +69,31 @@ const MIN_HEIGHT_MM = 40;
 // copy, and honouring it would feed the entire roll onto the floor.
 const MAX_HEIGHT_MM = 1500;
 
-export function pageHeightMm(tallestPx: number): number | null {
+export function pageHeightMm(
+  tallestPx: number,
+  tailMm: number | null = FALLBACK_TAIL_MM,
+): number | null {
   if (!Number.isFinite(tallestPx) || tallestPx <= 0) return null;
 
-  const height = Math.ceil(pxToMm(tallestPx)) + TAIL_MM;
+  // a tail that cannot be read is not a reason to print a receipt the printer
+  // will cut in half. fall back rather than propagate the NaN.
+  const tail =
+    tailMm !== null && Number.isFinite(tailMm) && tailMm >= 0
+      ? tailMm
+      : FALLBACK_TAIL_MM;
+
+  const height = Math.ceil(pxToMm(tallestPx)) + SLACK_MM + tail;
   if (height > MAX_HEIGHT_MM) return null;
 
   return Math.max(height, MIN_HEIGHT_MM);
 }
 
-export function receiptPageRule(widthMm: number | null, tallestPx: number): string {
-  const height = pageHeightMm(tallestPx);
+export function receiptPageRule(
+  widthMm: number | null,
+  tallestPx: number,
+  tailMm: number | null = FALLBACK_TAIL_MM,
+): string {
+  const height = pageHeightMm(tallestPx, tailMm);
 
   // no measurement worth trusting. drop the margins anyway - that alone is the
   // difference between a receipt in the middle of an a4 sheet and one at the
@@ -98,9 +115,11 @@ export function receiptPageRule(widthMm: number | null, tallestPx: number): stri
 // browser has no opportunity to paint the narrow version - there is no flicker.
 export function applyReceiptPageSize(doc: Document): string {
   const root = doc.documentElement;
-  const widthMm = parseMm(
-    getComputedStyle(root).getPropertyValue("--receipt-roll-width"),
-  );
+  const style = getComputedStyle(root);
+  const widthMm = parseMm(style.getPropertyValue("--receipt-roll-width"));
+  // the same property `.receipt-cut-tail` is sized from, so the page is always
+  // long enough to hold the tail block rather than pushing it onto a second one
+  const tailMm = parseMm(style.getPropertyValue(TAIL_PROPERTY));
 
   let tallestPx = 0;
   root.classList.add(MEASURING_CLASS);
@@ -122,7 +141,7 @@ export function applyReceiptPageSize(doc: Document): string {
     root.classList.remove(MEASURING_CLASS);
   }
 
-  return writePageRule(doc, receiptPageRule(widthMm, tallestPx));
+  return writePageRule(doc, receiptPageRule(widthMm, tallestPx, tailMm));
 }
 
 // an admin report is the opposite problem to a receipt. it goes on whatever

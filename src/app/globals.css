@@ -36,6 +36,14 @@
      the print rules and the page height in lib/pos/print-page.ts both read it */
   --receipt-roll-width: 80mm;
 
+  /* how far the roll is fed past the last line before the job ends, so the
+     cut lands clear of it. raise it while the printer is still cutting inside
+     the receipt, lower it if the stub under the total gets tiresome. the block
+     that fills this and the page height in lib/pos/print-page.ts both read it,
+     and they must not drift: a page shorter than the block puts the block on a
+     second sheet. */
+  --receipt-cut-tail: 35mm;
+
   /* states borrow from the cuisine set rather than invent new colour */
   --ok: #5f8442;
   --warn: #a97a24;
@@ -156,6 +164,13 @@ html.measuring-receipt .receipt-paper {
   padding: 3mm 4mm 6mm;
 }
 
+/* paper, not screen. it is also absent from the measuring pass above, which is
+   what lets print-page.ts add the tail to the page height itself rather than
+   measuring it twice. */
+.receipt-cut-tail {
+  display: none;
+}
+
 @media print {
   /* paper is paper. a dark theme on screen must not print navy ink. */
   :root {
@@ -261,10 +276,29 @@ html.measuring-receipt .receipt-paper {
     page-break-after: always;
   }
 
-  /* the tail feed. a thermal cutter sits a few mm above the print head, so
-     without this the last line of a copy is still under the blade. */
   .receipt-paper:last-child {
     break-after: auto;
     page-break-after: auto;
+  }
+
+  /* the tail feed.
+     the blade sits downstream of the print head, so paper under it has already
+     gone past the head - end the page at the last line and the cut lands short
+     of it, leaving the bottom of the receipt in the machine.
+
+     the feed that fixes it used to be blank page, which is free. it stopped
+     being free the day the truck moved to RawBT: the app trims trailing white
+     off a page before sending it, and took the feed with it. no amount of
+     empty page survives that.
+
+     so the tail ends in ink the app cannot read as blank. it is sacrificial -
+     the cut lands on or near the line, and whatever is left of it comes out on
+     top of the next sale, where it reads as the separator it is. */
+  .receipt-cut-tail {
+    display: block;
+    height: var(--receipt-cut-tail);
+    /* at the bottom edge and nowhere else. ink any higher up and everything
+       below it is blank again, which is exactly what gets trimmed. */
+    border-bottom: 1px dashed #000;
   }
 }

@@ -364,6 +364,13 @@ function ReceiptPaper({
       {showPrices ? (
         <p className="mt-4 text-center text-xs">شكراً / Thank you</p>
       ) : null}
+
+      {/* the feed that carries the last line past the cutter. it has to be the
+          final thing on the paper and it has to print something, or the print
+          service trims it away as blank and the cut lands inside the receipt -
+          see .receipt-cut-tail in globals.css. nothing to read, nothing to
+          announce. */}
+      <div className="receipt-cut-tail" aria-hidden="true" />
     </div>
   );
 }

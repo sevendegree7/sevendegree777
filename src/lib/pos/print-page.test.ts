@@ -40,6 +40,22 @@ describe("pageHeightMm", () => {
     expect(pageHeightMm(400)).toBe(145);
   });
 
+  it("takes the tail from css, so the page always holds the tail block", () => {
+    // the block that fills the tail is sized from the same custom property. a
+    // page shorter than the block would push it onto a second sheet, which on
+    // a roll is a whole extra receipt's worth of paper and a stray cut.
+    expect(pageHeightMm(400, 20)).toBe(130);
+    expect(pageHeightMm(400, 0)).toBe(110);
+  });
+
+  it("falls back to the built-in tail rather than printing an unreadable one", () => {
+    // the property is missing, in the wrong unit, or nonsense. losing the cut
+    // clearance silently is worse than ignoring the value.
+    expect(pageHeightMm(400, null)).toBe(145);
+    expect(pageHeightMm(400, Number.NaN)).toBe(145);
+    expect(pageHeightMm(400, -20)).toBe(145);
+  });
+
   it("leaves enough page below the receipt for the blade to clear it", () => {
     // the blade is downstream of the print head, so a page that ends at the
     // last line is cut short of it and the bottom of the receipt is left inside
