@@ -155,6 +155,9 @@ const en = {
   "receipt.items": "items",
   "receipt.thanks": "Thank you",
   "receipt.print": "Print",
+  // each copy is its own print job so the printer cuts between them, which
+  // means the dialog opens once per copy - this says why
+  "receipt.printingCopy": "Copy {done} of {total}…",
   "receipt.close": "Close",
   "receipt.reprint": "Reprint",
   "receipt.customerCopy": "Customer copy",
@@ -415,6 +418,7 @@ const ar: Record<TranslationKey, string> = {
   "receipt.items": "أصناف",
   "receipt.thanks": "شكراً",
   "receipt.print": "طباعة",
+  "receipt.printingCopy": "نسخة {done} من {total}…",
   "receipt.close": "إغلاق",
   "receipt.reprint": "إعادة طباعة",
   "receipt.customerCopy": "نسخة العميل",

@@ -1,7 +1,11 @@
 "use client";
 
+import { useState } from "react";
+import { flushSync } from "react-dom";
+
 import { useTranslate, type Translator } from "@/lib/i18n/use-language";
 import { formatMoney } from "@/lib/pos/money";
+import { printCopies, waitForPrintEnd } from "@/lib/pos/print-job";
 import { applyReceiptPageSize } from "@/lib/pos/print-page";
 import type { Receipt } from "@/lib/pos/receipt";
 
@@ -39,6 +43,45 @@ export function ReceiptView({
   const { t } = useTranslate();
   const safeCopies = Math.max(1, Math.min(3, Math.floor(copies)));
 
+  // which copy is alone on the page right now, or null when all of them are.
+  // null is the resting state, so the preview shows every paper and a Ctrl+P
+  // from the browser's own menu still prints the lot.
+  const [copyOnPage, setCopyOnPage] = useState<number | null>(null);
+  const printing = copyOnPage !== null;
+
+  // one print job per copy, so the printer's end-of-job cut falls between them.
+  // see lib/pos/print-job.ts for why that is worth a second dialog.
+  async function print() {
+    if (printing) return;
+
+    // measured once, here, while every copy is still on the page - so the page
+    // is the tallest copy's length and all the slips from one sale come off the
+    // roll the same size. measuring inside the loop would fit each page to its
+    // own copy, which saves roll on the prep paper but hands the counter two
+    // slips of different lengths for the same order.
+    applyReceiptPageSize(document);
+
+    try {
+      await printCopies(
+        safeCopies,
+        {
+          // flushSync, not a plain setState: the copy has to be on the page
+          // before print() is called in the same turn, and react would
+          // otherwise still be showing the previous one
+          show: (index) => flushSync(() => setCopyOnPage(index)),
+          // no re-measure. the rule written above is still in the head and
+          // applies to every job in this sequence.
+          send: () => window.print(),
+        },
+        () => waitForPrintEnd(window),
+      );
+    } finally {
+      // whatever went wrong, the till must not be left showing one copy of a
+      // two-copy sale with a dead print button
+      setCopyOnPage(null);
+    }
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-navy/60 p-4 print:static print:block print:overflow-visible print:bg-transparent print:p-0">
       <div className="my-auto w-full max-w-sm print:my-0 print:max-w-none">
@@ -55,6 +98,7 @@ export function ReceiptView({
                 reprint={reprint}
                 t={t}
                 variant={variant}
+                onPaper={copyOnPage === null || copyOnPage === index}
                 copyLabel={
                   safeCopies === 1
                     ? null
@@ -77,15 +121,18 @@ export function ReceiptView({
           </button>
           <button
             type="button"
-            // the page is sized to the receipt on the way to the dialog, so
-            // what comes out is the paper's width and the receipt's length
-            onClick={() => {
-              applyReceiptPageSize(document);
-              window.print();
-            }}
-            className="flex-[2] rounded-xl bg-navy px-4 py-3 text-base font-semibold text-cream dark:bg-accent-surface dark:text-accent-ink"
+            // the page is sized to the receipt on the way to each dialog, so
+            // what comes out is the paper's width and that copy's length
+            disabled={printing}
+            onClick={() => void print()}
+            className="flex-[2] rounded-xl bg-navy px-4 py-3 text-base font-semibold text-cream disabled:opacity-60 dark:bg-accent-surface dark:text-accent-ink"
           >
-            {t("receipt.print")}
+            {printing
+              ? t("receipt.printingCopy", {
+                  done: (copyOnPage ?? 0) + 1,
+                  total: safeCopies,
+                })
+              : t("receipt.print")}
           </button>
         </div>
       </div>
@@ -100,12 +147,18 @@ function ReceiptPaper({
   reprint,
   copyLabel,
   variant,
+  onPaper,
   t,
 }: {
   receipt: Receipt;
   reprint: boolean;
   copyLabel: string | null;
   variant: CopyVariant;
+  // false while a different copy is being sent. dropping the receipt-paper
+  // class is all it takes: the print rules in globals.css keep whatever carries
+  // it and take everything else out of the flow, so this copy stops being
+  // printed *and* stops occupying roll ahead of the one that is.
+  onPaper: boolean;
   t: Translator;
 }) {
   const showPrices = variant === "customer";
@@ -113,7 +166,9 @@ function ReceiptPaper({
   return (
     // the print padding is set in globals.css next to the roll width, so there
     // is no print:p-* here to override it
-    <div className="receipt-paper mb-4 rounded-2xl bg-white p-6 font-mono text-sm text-black shadow-lg print:mb-0 print:rounded-none print:shadow-none">
+    <div
+      className={`${onPaper ? "receipt-paper" : ""} mb-4 rounded-2xl bg-white p-6 font-mono text-sm text-black shadow-lg print:mb-0 print:rounded-none print:shadow-none`}
+    >
       <div className="text-center">
         {/* the brand mark, customer copy only.
             not on the prep paper: the baker does not need branding, and every

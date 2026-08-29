@@ -70,12 +70,19 @@ never find it. a bridge app is not a workaround here, it is the only route.
 press **اختبار / Test** on that screen before saving. if the test passes the
 connection is real; if it fails, nothing after this point can work.
 
-**cut paper must be "after each page", not "after job".** each sale prints two
-copies - the customer's and the baker's - as two pdf pages. on "after job" the
-printer cuts once at the end and both copies come out joined on one long slip
-and have to be torn apart by hand. `feed lines before cut` around `3` as well:
-the cutter blade sits a few millimetres above the print head, so without the
-feed the last line of the copy is sliced in half.
+**about the cut between the two copies.** each sale prints the customer's copy
+and the baker's copy. a thermal printer cuts at the end of a *job*, so sent as
+one job the two copies come off the roll joined in one long slip.
+
+the till no longer relies on the app for this: **it sends each copy as its own
+print job**, so the end-of-job cut lands between them wherever the app's own cut
+setting is buried, or missing. see `src/lib/pos/print-job.ts`. the visible cost
+is that the print dialog opens once per copy - two taps on a two-copy sale.
+
+if the app does expose `cut paper` / `after each page`, setting it changes
+nothing for the better; leave it alone. `feed lines before cut` around `3` is
+still worth setting if it is there: the cutter blade sits a few millimetres
+above the print head, so without the feed the last line is sliced in half.
 
 **4. turn RawBT on as a print service.**
 `Settings → Connected devices → Printing → Print services → RawBT → ON`.
