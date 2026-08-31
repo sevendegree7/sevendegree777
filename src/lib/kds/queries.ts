@@ -146,6 +146,65 @@ export async function fetchRecentOrders(
 // one ticket after a realtime event.
 // order_items is not in the realtime publication, so the lines are always
 // fetched here rather than read off the event payload.
+// admin order list: date range, optional status/cashier, paginated newest first.
+export async function fetchAdminOrders(
+  supabase: KdsClient,
+  options: {
+    sinceIso: string;
+    untilIso?: string;
+    status?: string;
+    cashierId?: string;
+    limit?: number;
+    offset?: number;
+  },
+): Promise<KitchenOrdersResult> {
+  let query = supabase
+    .from("orders")
+    .select("*")
+    .gte("created_at", options.sinceIso)
+    .order("created_at", { ascending: false });
+
+  if (options.untilIso) {
+    query = query.lt("created_at", options.untilIso);
+  }
+
+  if (options.status) {
+    query = query.eq("status", options.status as Order["status"]);
+  }
+
+  if (options.cashierId) {
+    query = query.eq("created_by", options.cashierId);
+  }
+
+  const limit = options.limit ?? 100;
+  const offset = options.offset ?? 0;
+  query = query.range(offset, offset + limit - 1);
+
+  const { data, error } = await query;
+
+  if (error) {
+    return { orders: [], error: error.message };
+  }
+
+  const rows = data ?? [];
+  const { items, error: itemsError } = await fetchItemsByOrder(
+    supabase,
+    rows.map((row) => row.id),
+  );
+
+  if (itemsError) {
+    return { orders: [], error: itemsError };
+  }
+
+  return {
+    orders: rows.map((row) => ({
+      ...normalizeOrder(row),
+      items: items.get(row.id) ?? [],
+    })),
+    error: null,
+  };
+}
+
 export async function fetchKitchenOrder(
   supabase: KdsClient,
   orderId: string,

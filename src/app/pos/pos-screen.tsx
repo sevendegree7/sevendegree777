@@ -24,6 +24,7 @@ import {
 import { cartLinesFromOrder } from "@/lib/pos/edit-order";
 import { formatMoney } from "@/lib/pos/money";
 import { newOrderId } from "@/lib/pos/order-id";
+import { openCashDrawer } from "@/lib/pos/rawbt";
 import {
   boxContentsSignature,
   isBoxProduct,
@@ -589,7 +590,15 @@ export function PosScreen({
         // the paper shows the prices that were actually charged rather than the
         // ones the browser was holding. print can fail; the sale stays and the
         // cashier reprints from history.
-        {
+        if ("receipt" in result && result.receipt) {
+          setReceipt({
+            ...result.receipt,
+            replaces: replaced,
+          });
+        } else {
+          // Older/duplicate responses may not carry a receipt. Keep the
+          // history read as a safe fallback, but normal sales now print from
+          // the authoritative checkout response.
           const reread = await source.loadKitchenOrder(result.orderId);
 
           if (reread.data) {
@@ -621,6 +630,20 @@ export function PosScreen({
             className="rounded-full border border-line bg-raised px-3 py-1 text-sm"
           >
             {t("pos.orders")}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (!openCashDrawer()) {
+                setFeedback({
+                  kind: "error",
+                  key: "drawer.androidOnly",
+                });
+              }
+            }}
+            className="rounded-full border border-line bg-raised px-3 py-1 text-sm"
+          >
+            {t("drawer.open")}
           </button>
           {offline ? (
             <span className="text-sm text-muted">{t("pos.offlineSaved")}</span>
@@ -829,6 +852,7 @@ export function PosScreen({
         <ReceiptView
           receipt={receipt}
           copies={initialSettings.receipt_copies}
+          openDrawerOnPrint
           onClose={() => setReceipt(null)}
         />
       ) : null}

@@ -820,3 +820,134 @@ export async function settleAgelDebt(input: {
   };
 }
 
+// void one or more tickets from admin > orders. stock is returned the same way
+// as voiding from the till.
+export async function cancelAdminOrders(
+  orderIds: string[],
+): Promise<ActionResult & { cancelled?: number }> {
+  const { error } = await requireAdmin();
+  if (error) return { ok: false, message: error };
+
+  const unique = [...new Set(orderIds.filter(Boolean))];
+  if (unique.length === 0) {
+    return { ok: false, message: "pick at least one order" };
+  }
+
+  const { cancelOrder } = await import("@/app/pos/actions");
+
+  let cancelled = 0;
+  let lastWarning: string | undefined;
+
+  for (const orderId of unique) {
+    const result = await cancelOrder(orderId);
+    if (!result.ok) {
+      return {
+        ok: false,
+        message: result.message,
+        cancelled,
+      };
+    }
+    cancelled += 1;
+    if (result.warning) lastWarning = result.warning;
+  }
+
+  revalidatePath("/admin/orders");
+  revalidatePath("/admin/reports");
+  revalidatePath("/admin/debts");
+  revalidatePath("/admin");
+
+  return {
+    ok: true,
+    cancelled,
+    message:
+      lastWarning ??
+      `cancelled ${cancelled} ticket${cancelled === 1 ? "" : "s"}`,
+  };
+}
+
+// wipe every order row. for clearing test data before go-live — restores stock
+// first, then hard-deletes via the service role (rls has no delete policy).
+export async function purgeAllOrders(
+  confirmation: string,
+): Promise<ActionResult & { removed?: number }> {
+  const { supabase, error } = await requireAdmin();
+  if (error) return { ok: false, message: error };
+
+  if (confirmation.trim() !== "DELETE ALL ORDERS") {
+    return {
+      ok: false,
+      message: 'type DELETE ALL ORDERS exactly to confirm',
+    };
+  }
+
+  const { data: live, error: listError } = await supabase
+    .from("orders")
+    .select("id")
+    .neq("status", "cancelled");
+
+  if (listError) {
+    return { ok: false, message: listError.message };
+  }
+
+  for (const row of live ?? []) {
+    const { error: cancelError } = await supabase
+      .from("orders")
+      .update({ status: "cancelled" })
+      .eq("id", row.id)
+      .neq("status", "cancelled");
+
+    if (cancelError) {
+      return { ok: false, message: cancelError.message };
+    }
+
+    await supabase.rpc("return_stock_for_order", { p_order_id: row.id });
+  }
+
+  let admin;
+  try {
+    admin = createAdminClient();
+  } catch (caught) {
+    return {
+      ok: false,
+      message:
+        caught instanceof Error ? caught.message : "server setup is missing",
+    };
+  }
+
+  const { count, error: countError } = await admin
+    .from("orders")
+    .select("id", { count: "exact", head: true });
+
+  if (countError) {
+    return { ok: false, message: countError.message };
+  }
+
+  const removed = count ?? 0;
+
+  const { error: deleteError } = await admin
+    .from("orders")
+    .delete()
+    .neq("id", "00000000-0000-0000-0000-000000000000");
+
+  if (deleteError) {
+    return { ok: false, message: deleteError.message };
+  }
+
+  await admin
+    .from("daily_ticket_counters")
+    .delete()
+    .gte("next_number", 0);
+
+  revalidatePath("/admin/orders");
+  revalidatePath("/admin/reports");
+  revalidatePath("/admin/debts");
+  revalidatePath("/admin");
+  revalidatePath("/pos");
+
+  return {
+    ok: true,
+    removed,
+    message: `removed ${removed} order${removed === 1 ? "" : "s"}. ticket numbers start again from 1 today.`,
+  };
+}
+

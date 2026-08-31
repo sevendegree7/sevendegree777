@@ -1,53 +1,20 @@
-// handing raw ESC/POS to the printer, through RawBT.
-//
-// the till prints through android's print framework, which takes a picture of
-// the page and sends that. a picture cannot say "cut here" or "open the
-// drawer" - those are commands, and a picture has nowhere to put them. RawBT
-// would normally send the cut itself, from a setting in its printer profile;
-// the build on the truck's tablet has no such setting, and neither has it one
-// for the drawer.
-//
-// RawBT accepts a job a second way: navigate to an `intent:` url carrying
-// base64 ESC/POS and it hands those bytes to the printer unaltered. that is
-// the only channel we have for a command. it is not stopped by the rule that
-// blocks the till from reaching http://192.168.8.248 directly, because nothing
-// here is an http request - it is a link handed to an app on the same device.
-//
-// the format is documented at rawbt.ru/start.html, and is the same url
-// mike42/escpos-php builds in its RawbtPrintConnector.
-//
-// two things this cannot do. it is android + chrome only, so on a desktop the
-// link does nothing. and chrome will not follow a custom scheme without a real
-// user gesture, which is why these are anchors to be tapped rather than
-// something fired from code after the fact.
+import type { Receipt } from "./receipt";
 
-// the android package. naming it means a tablet without RawBT installed opens
-// the play store page instead of failing silently.
+// RawBT is the Android bridge between the PWA and an ESC/POS printer.
+// The browser cannot open the printer's TCP port directly.
 const RAWBT_PACKAGE = "ru.a402d.rawbtprinter";
-
+const RECEIPT_COLUMNS = 48;
 const ESC = 0x1b;
 const GS = 0x1d;
 
-// ESC p 0 25 250 - pulse the drawer pin for ~50ms. the kick every till sends,
-// and the same one behind the `Cash Open` button on the printer's own web page,
-// which is how we know this printer answers it.
+// ESC p 0 25 250 - pulse the drawer pin for about 50ms.
 export const OPEN_DRAWER: readonly number[] = [ESC, 0x70, 0x00, 0x19, 0xfa];
-
-// ESC d 4 - feed four lines. the blade sits downstream of the print head, so
-// without this a cut lands above the last thing printed.
+// Feed four lines before cutting so the last line clears the blade.
 export const FEED: readonly number[] = [ESC, 0x64, 0x04];
-
-// GS V 66 0 - partial cut. leaves a tab of paper holding the slip on, so it
-// does not drop on the floor of the truck between the customer and the counter.
+// Partial cut leaves a small tab holding the receipt.
 export const CUT: readonly number[] = [GS, 0x56, 0x42, 0x00];
-
-// feed clear of the blade, then cut. the pair that is wanted in practice - a
-// bare CUT slices through whatever was printed last.
 export const FEED_AND_CUT: readonly number[] = [...FEED, ...CUT];
 
-// base64 of raw bytes, built a character at a time rather than by spreading the
-// array into fromCharCode: a receipt sent as a raster is tens of thousands of
-// bytes and that spread is an argument list long enough to overflow the stack.
 export function toBase64(bytes: readonly number[]): string {
   let binary = "";
   for (const byte of bytes) {
@@ -59,4 +26,198 @@ export function toBase64(bytes: readonly number[]): string {
 
 export function rawbtIntentUrl(bytes: readonly number[]): string {
   return `intent:base64,${toBase64(bytes)}#Intent;scheme=rawbt;package=${RAWBT_PACKAGE};end;`;
+}
+
+function isAndroid(): boolean {
+  return typeof navigator !== "undefined" && /android/i.test(navigator.userAgent);
+}
+
+export function rawBtAvailable(): boolean {
+  return isAndroid();
+}
+
+function utf8(text: string): number[] {
+  return Array.from(new TextEncoder().encode(text));
+}
+
+function clean(value: string | null | undefined): string {
+  return (value ?? "").replace(/\s+/g, " ").trim();
+}
+
+function money(value: number): string {
+  return `${Number(value).toFixed(2)} EGP`;
+}
+
+function padColumns(left: string, right: string): string {
+  const safeLeft = clean(left);
+  const safeRight = clean(right);
+  const available = RECEIPT_COLUMNS - safeRight.length - 1;
+
+  if (safeLeft.length <= available) {
+    return (
+      safeLeft +
+      " ".repeat(RECEIPT_COLUMNS - safeLeft.length - safeRight.length) +
+      safeRight
+    );
+  }
+
+  return `${safeLeft.slice(0, Math.max(1, available - 1))}… ${safeRight}`;
+}
+
+function wrapped(text: string, width = RECEIPT_COLUMNS): string[] {
+  const value = clean(text);
+  if (!value) return [""];
+
+  const lines: string[] = [];
+  let line = "";
+  for (const word of value.split(" ")) {
+    if (!line) {
+      line = word;
+    } else if (line.length + word.length + 1 <= width) {
+      line += ` ${word}`;
+    } else {
+      lines.push(line);
+      line = word;
+    }
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+
+function addText(bytes: number[], text = ""): void {
+  bytes.push(...utf8(text), 0x0a);
+}
+
+function addCentered(bytes: number[], text: string): void {
+  bytes.push(ESC, 0x61, 0x01);
+  addText(bytes, text);
+  bytes.push(ESC, 0x61, 0x00);
+}
+
+function addReceiptCopy(
+  bytes: number[],
+  receipt: Receipt,
+  variant: "customer" | "prep",
+  copyNumber: number,
+  totalCopies: number,
+): void {
+  const showPrices = variant === "customer";
+
+  bytes.push(ESC, 0x61, 0x01, ESC, 0x45, 0x01);
+  addText(bytes, "SEVEN | DEGREES");
+  bytes.push(ESC, 0x45, 0x00);
+  addCentered(
+    bytes,
+    showPrices ? "Cairo's cartographer of taste" : "PREPARATION COPY",
+  );
+  if (totalCopies > 1) {
+    addCentered(bytes, showPrices ? "CUSTOMER COPY" : "KITCHEN COPY");
+  }
+  if (copyNumber > 1) addCentered(bytes, `COPY ${copyNumber}`);
+
+  addText(bytes);
+  addCentered(bytes, "--------------------------------");
+  addCentered(bytes, "ORDER");
+  bytes.push(ESC, 0x21, 0x30, ESC, 0x45, 0x01);
+  addCentered(bytes, receipt.ticket);
+  bytes.push(ESC, 0x21, 0x00, ESC, 0x45, 0x00);
+  addCentered(bytes, "--------------------------------");
+
+  addText(bytes, padColumns("Time", receipt.takenAt));
+  addText(bytes, padColumns("Type", receipt.orderType.replace("_", " ")));
+  if (showPrices) addText(bytes, padColumns("Payment", receipt.paymentMethod ?? "-"));
+  if (receipt.cashier) addText(bytes, padColumns("Cashier", receipt.cashier));
+  if (receipt.customerName) addText(bytes, padColumns("Customer", receipt.customerName));
+  if (receipt.customerPhone) addText(bytes, padColumns("Phone", receipt.customerPhone));
+  if (receipt.replaces) addText(bytes, `Replaces #${receipt.replaces} (cancelled)`);
+
+  addText(bytes);
+  addText(bytes, "-".repeat(RECEIPT_COLUMNS));
+  for (const line of receipt.lines) {
+    const itemLines = wrapped(`${line.quantity} x ${line.name}`, 32);
+    addText(
+      bytes,
+      showPrices ? padColumns(itemLines[0], money(line.lineTotal)) : itemLines[0],
+    );
+    for (const itemLine of itemLines.slice(1)) addText(bytes, `  ${itemLine}`);
+    if (line.boxContents.length > 0) {
+      for (const content of wrapped(`  ${line.boxContents.join(", ")}`)) {
+        addText(bytes, content);
+      }
+    }
+    if (line.extras.length > 0) {
+      for (const extra of wrapped(`  + ${line.extras.join(", ")}`)) {
+        addText(bytes, extra);
+      }
+    }
+    if (line.notes) {
+      for (const note of wrapped(`  Note: ${line.notes}`)) addText(bytes, note);
+    }
+  }
+
+  if (showPrices) {
+    addText(bytes, "-".repeat(RECEIPT_COLUMNS));
+    if (receipt.tax) {
+      addText(bytes, padColumns("Subtotal", money(receipt.tax.subtotal)));
+      addText(
+        bytes,
+        padColumns(`${receipt.tax.label} ${receipt.tax.rate}%`, money(receipt.tax.amount)),
+      );
+    }
+    if (receipt.discountAmount) {
+      addText(bytes, padColumns("Discount", `- ${money(receipt.discountAmount)}`));
+    }
+    if (receipt.isDiyafa) {
+      addCentered(bytes, `Diyafa${receipt.diyafaReason ? ` - ${receipt.diyafaReason}` : ""}`);
+    }
+    bytes.push(ESC, 0x45, 0x01);
+    addText(bytes, padColumns("TOTAL", money(receipt.total)));
+    bytes.push(ESC, 0x45, 0x00);
+    addCentered(bytes, "Thank you");
+  } else if (receipt.isDiyafa) {
+    addCentered(bytes, `Diyafa${receipt.diyafaReason ? ` - ${receipt.diyafaReason}` : ""}`);
+  }
+
+  addText(bytes);
+  bytes.push(...FEED_AND_CUT);
+}
+
+export function receiptEscPos(receipt: Receipt, copies = 2): Uint8Array {
+  const safeCopies = Number.isFinite(copies)
+    ? Math.max(1, Math.min(3, Math.floor(copies)))
+    : 1;
+  const bytes = [ESC, 0x40];
+
+  for (let copy = 0; copy < safeCopies; copy += 1) {
+    addReceiptCopy(
+      bytes,
+      receipt,
+      copy === 0 ? "customer" : "prep",
+      copy + 1,
+      safeCopies,
+    );
+  }
+
+  return Uint8Array.from(bytes);
+}
+
+function send(bytes: readonly number[]): boolean {
+  if (!rawBtAvailable()) return false;
+
+  // This is an Android custom URI, not a Next.js route.
+  window.location.href = rawbtIntentUrl(bytes);
+  return true;
+}
+
+export function printReceiptToRawBt(
+  receipt: Receipt,
+  copies = 2,
+  openDrawer = false,
+): boolean {
+  const receiptBytes = Array.from(receiptEscPos(receipt, copies));
+  return send(openDrawer ? [...OPEN_DRAWER, ...receiptBytes] : receiptBytes);
+}
+
+export function openCashDrawer(): boolean {
+  return send([...OPEN_DRAWER]);
 }

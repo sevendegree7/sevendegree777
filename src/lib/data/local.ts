@@ -9,6 +9,7 @@ import { cartTotal, lineUnitPrice, type PricedLine } from "@/lib/pos/cart";
 import { modifierAppliesToProduct } from "@/lib/pos/modifiers";
 import { newOrderId } from "@/lib/pos/order-id";
 import { isDiscountKind, priceSale } from "@/lib/pos/pricing";
+import { buildReceipt } from "@/lib/pos/receipt";
 import type {
   BoxContent,
   OrderItem,
@@ -316,6 +317,7 @@ export function createLocalSource(): DataSource {
           total: saved.order.total_amount,
           ticketDate: saved.order.ticket_date ?? ticket.date,
           ticketNumber: saved.order.ticket_number ?? ticket.number,
+          receipt: buildReceipt(saved.order),
         };
       } catch {
         // out of room, or storage switched off. saying "sold" here would put

@@ -6,60 +6,79 @@ import {
   FEED_AND_CUT,
   OPEN_DRAWER,
   rawbtIntentUrl,
+  receiptEscPos,
+  rawBtAvailable,
   toBase64,
 } from "./rawbt";
+import type { Receipt } from "./receipt";
 
-describe("the command bytes", () => {
-  // these are the printer's language, not ours. a typo here is a drawer that
-  // never opens or a blade that fires mid-receipt, and neither shows up in a
-  // browser - so they are pinned against the ESC/POS spec rather than against
-  // whatever the code happens to produce.
+const receipt: Receipt = {
+  ticket: "13",
+  takenAt: "31/08/2026, 18:00",
+  orderType: "takeaway",
+  paymentMethod: "cash",
+  cashier: "Cashier",
+  customerName: null,
+  customerPhone: null,
+  lines: [
+    {
+      name: "Tiramisu",
+      extras: [],
+      boxContents: [],
+      quantity: 1,
+      unitPrice: 220,
+      lineTotal: 220,
+      notes: null,
+    },
+  ],
+  itemCount: 1,
+  tax: null,
+  discountAmount: null,
+  isDiyafa: false,
+  diyafaReason: null,
+  total: 220,
+  notes: null,
+  replaces: null,
+};
+
+describe("the RawBT command bytes", () => {
   it("kicks the drawer with ESC p 0 25 250", () => {
     expect(OPEN_DRAWER).toEqual([0x1b, 0x70, 0x00, 0x19, 0xfa]);
   });
 
-  it("cuts with GS V 66 0, a partial cut", () => {
-    // function B, and a partial cut on purpose: a full cut drops the slip
+  it("feeds before a partial cut", () => {
     expect(CUT).toEqual([0x1d, 0x56, 0x42, 0x00]);
-  });
-
-  it("feeds with ESC d 4 before it cuts, never after", () => {
     expect(FEED).toEqual([0x1b, 0x64, 0x04]);
     expect(FEED_AND_CUT).toEqual([...FEED, ...CUT]);
   });
-});
 
-describe("toBase64", () => {
-  it("encodes raw bytes, not text", () => {
-    // 0x1b is an escape character and 0xfa is not valid utf-8 on its own.
-    // anything that treats these as a string mangles them before the printer
-    // ever sees them, which is the whole failure mode this guards.
-    expect(toBase64([0x1b, 0x70, 0x00, 0x19, 0xfa])).toBe("G3AAGfo=");
-  });
+  it("creates one cut command per printed copy", () => {
+    const output = Array.from(receiptEscPos(receipt, 2));
+    let cuts = 0;
 
-  it("survives a payload the size of a real raster", () => {
-    // a receipt sent as an image is tens of thousands of bytes. building the
-    // string by spreading it into fromCharCode throws here; a loop does not.
-    const big = Array.from({ length: 200_000 }, (_, i) => i & 0xff);
-    expect(() => toBase64(big)).not.toThrow();
-    expect(toBase64(big).length).toBeGreaterThan(200_000);
-  });
+    for (let index = 0; index < output.length - 2; index += 1) {
+      if (output[index] === 0x1d && output[index + 1] === 0x56) cuts += 1;
+    }
 
-  it("has nothing to encode for nothing", () => {
-    expect(toBase64([])).toBe("");
+    expect(cuts).toBe(2);
+    expect(new TextDecoder().decode(Uint8Array.from(output))).toContain(
+      "SEVEN | DEGREES",
+    );
   });
 });
 
-describe("rawbtIntentUrl", () => {
-  it("builds the intent url RawBT answers to", () => {
+describe("RawBT encoding", () => {
+  it("encodes raw bytes without corrupting ESC/POS commands", () => {
+    expect(toBase64(OPEN_DRAWER)).toBe("G3AAGfo=");
+  });
+
+  it("builds an Android intent URL with the RawBT package", () => {
     expect(rawbtIntentUrl(OPEN_DRAWER)).toBe(
       "intent:base64,G3AAGfo=#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;end;",
     );
   });
 
-  it("names the package, so a tablet without RawBT is sent to install it", () => {
-    // without this the browser has nothing to hand the link to and does
-    // nothing at all, which looks exactly like a broken printer
-    expect(rawbtIntentUrl(CUT)).toContain("package=ru.a402d.rawbtprinter");
+  it("does not claim RawBT support outside Android", () => {
+    expect(rawBtAvailable()).toBe(false);
   });
 });

@@ -158,12 +158,16 @@ const en = {
   // each copy is its own print job so the printer cuts between them, which
   // means the dialog opens once per copy - this says why
   "receipt.printingCopy": "Copy {done} of {total}…",
+  "receipt.printDirect": "Print to XP-80",
   "receipt.close": "Close",
   "receipt.reprint": "Reprint",
   "receipt.customerCopy": "Customer copy",
   "receipt.kitchenCopy": "Baker copy",
   "receipt.customer": "Customer",
   "receipt.phone": "Phone",
+
+  "drawer.open": "Open drawer",
+  "drawer.androidOnly": "Direct drawer opening is available on the Android till with RawBT.",
 
   "cart.customerDetails": "Customer details (optional)",
   "cart.customerName": "Customer name",
@@ -215,6 +219,7 @@ const en = {
   "admin.nav.waste": "Waste",
   "admin.nav.recipes": "Recipes",
   "admin.nav.reports": "Reports",
+  "admin.nav.orders": "Orders",
   "admin.nav.debts": "Agel debts",
   "admin.nav.staff": "Staff",
   "admin.nav.settings": "Settings",
@@ -419,12 +424,16 @@ const ar: Record<TranslationKey, string> = {
   "receipt.thanks": "شكراً",
   "receipt.print": "طباعة",
   "receipt.printingCopy": "نسخة {done} من {total}…",
+  "receipt.printDirect": "طباعة على XP-80",
   "receipt.close": "إغلاق",
   "receipt.reprint": "إعادة طباعة",
   "receipt.customerCopy": "نسخة العميل",
   "receipt.kitchenCopy": "نسخة المطبخ",
   "receipt.customer": "العميل",
   "receipt.phone": "الموبايل",
+
+  "drawer.open": "افتح الدرج",
+  "drawer.androidOnly": "فتح الدرج مباشرة متاح على تابلت أندرويد مع تطبيق RawBT.",
 
   "cart.customerDetails": "بيانات العميل (اختياري)",
   "cart.customerName": "اسم العميل",
@@ -476,6 +485,7 @@ const ar: Record<TranslationKey, string> = {
   "admin.nav.waste": "الهدر",
   "admin.nav.recipes": "الوصفات",
   "admin.nav.reports": "التقارير",
+  "admin.nav.orders": "الطلبات",
   "admin.nav.debts": "ديون الآجل",
   "admin.nav.staff": "الموظفون",
   "admin.nav.settings": "الإعدادات",

@@ -7,6 +7,7 @@ import { useTranslate, type Translator } from "@/lib/i18n/use-language";
 import { formatMoney } from "@/lib/pos/money";
 import { printCopies, waitForPrintEnd } from "@/lib/pos/print-job";
 import { applyReceiptPageSize } from "@/lib/pos/print-page";
+import { printReceiptToRawBt } from "@/lib/pos/rawbt";
 import type { Receipt } from "@/lib/pos/receipt";
 
 type ReceiptViewProps = {
@@ -15,6 +16,9 @@ type ReceiptViewProps = {
   reprint?: boolean;
   // customer + baker copies by default; admin can change this in settings
   copies?: number;
+  // a new cash sale may open the drawer with the same direct print action.
+  // reprints deliberately leave it false.
+  openDrawerOnPrint?: boolean;
   onClose: () => void;
 };
 
@@ -38,6 +42,7 @@ export function ReceiptView({
   receipt,
   reprint = false,
   copies = 2,
+  openDrawerOnPrint = false,
   onClose,
 }: ReceiptViewProps) {
   const { t } = useTranslate();
@@ -121,11 +126,35 @@ export function ReceiptView({
           </button>
           <button
             type="button"
-            // the page is sized to the receipt on the way to each dialog, so
-            // what comes out is the paper's width and that copy's length
+            onClick={() => {
+              // Direct ESC/POS printing is used on the Android till. The
+              // browser path remains available on Windows/iOS and if RawBT
+              // is not installed.
+              if (
+                !printReceiptToRawBt(
+                  receipt,
+                  safeCopies,
+                  openDrawerOnPrint &&
+                    receipt.paymentMethod === "cash" &&
+                    receipt.total > 0 &&
+                    !receipt.isDiyafa,
+                )
+              ) {
+                applyReceiptPageSize(document);
+                window.print();
+              }
+            }}
+            className="flex-[2] rounded-xl bg-navy px-4 py-3 text-base font-semibold text-cream dark:bg-accent-surface dark:text-accent-ink"
+          >
+            {t("receipt.printDirect")}
+          </button>
+          <button
+            type="button"
+            // the remote print implementation keeps browser printing as the
+            // fallback, one copy per dialog so the desktop cutter can split it
             disabled={printing}
             onClick={() => void print()}
-            className="flex-[2] rounded-xl bg-navy px-4 py-3 text-base font-semibold text-cream disabled:opacity-60 dark:bg-accent-surface dark:text-accent-ink"
+            className="rounded-xl border border-line px-3 py-3 text-sm text-ink disabled:opacity-60"
           >
             {printing
               ? t("receipt.printingCopy", {

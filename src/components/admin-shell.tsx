@@ -15,6 +15,7 @@ const LINKS: { href: string; labelKey: TranslationKey }[] = [
   { href: "/admin/inventory/waste", labelKey: "admin.nav.waste" },
   { href: "/admin/recipes", labelKey: "admin.nav.recipes" },
   { href: "/admin/reports", labelKey: "admin.nav.reports" },
+  { href: "/admin/orders", labelKey: "admin.nav.orders" },
   { href: "/admin/debts", labelKey: "admin.nav.debts" },
   { href: "/admin/users", labelKey: "admin.nav.staff" },
   { href: "/admin/settings", labelKey: "admin.nav.settings" },

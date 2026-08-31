@@ -4,6 +4,11 @@ import { isKitchenStatus, ticketNumber } from "@/lib/kds/orders";
 import { cartTotal, lineUnitPrice, type PricedLine } from "@/lib/pos/cart";
 import { modifierAppliesToProduct } from "@/lib/pos/modifiers";
 import { isValidOrderId } from "@/lib/pos/order-id";
+import {
+  formatTruckTime,
+  receiptLineTotal,
+  type Receipt,
+} from "@/lib/pos/receipt";
 import { createClient } from "@/lib/supabase/server";
 import { readTaxSettings, type TaxSettings } from "@/lib/pos/tax";
 import {
@@ -98,11 +103,77 @@ export type CheckoutResult =
       total: number;
       ticketDate: string;
       ticketNumber: number;
+      // authoritative receipt data avoids a second read after payment.
+      receipt?: Receipt;
     }
   | { ok: false; message: string };
 
 // postgres unique_violation
 const UNIQUE_VIOLATION = "23505";
+
+function receiptFromCheckout(input: {
+  pricedLines: Array<{
+    productName: string;
+    basePrice: number;
+    quantity: number;
+    selectedModifiers: SelectedModifier[];
+    boxContents: BoxContent[];
+    notes: string | null;
+  }>;
+  ticket: number;
+  createdAt: string;
+  orderType: OrderType;
+  paymentMethod: PaymentMethod;
+  cashier: string;
+  customerName: string | null;
+  customerPhone: string | null;
+  priced: ReturnType<typeof priceSale>;
+  notes: string | null;
+  isDiyafa: boolean;
+  diyafaReason: string | null;
+}): Receipt {
+  return {
+    ticket: String(input.ticket),
+    takenAt: formatTruckTime(input.createdAt),
+    orderType: input.orderType,
+    paymentMethod: input.paymentMethod,
+    cashier: input.cashier,
+    customerName: input.customerName,
+    customerPhone: input.customerPhone,
+    lines: input.pricedLines.map((line) => ({
+      name: line.productName,
+      extras: line.selectedModifiers.map((modifier) => modifier.name),
+      boxContents: line.boxContents.map(
+        (piece) => `${piece.quantity}× ${piece.name}`,
+      ),
+      quantity: line.quantity,
+      unitPrice: lineUnitPrice(line),
+      lineTotal: receiptLineTotal(lineUnitPrice(line), line.quantity),
+      notes: line.notes,
+    })),
+    itemCount: input.pricedLines.reduce(
+      (sum, line) => sum + line.quantity,
+      0,
+    ),
+    tax:
+      input.priced.tax > 0
+        ? {
+            label: input.priced.label,
+            rate: input.priced.rate,
+            amount: input.priced.tax,
+            subtotal: input.priced.subtotal,
+          }
+        : null,
+    discountAmount: input.priced.discountAmount > 0
+      ? input.priced.discountAmount
+      : null,
+    isDiyafa: input.isDiyafa,
+    diyafaReason: input.diyafaReason,
+    total: input.priced.payable,
+    notes: input.notes,
+    replaces: null,
+  };
+}
 
 // writes one order plus its lines. status starts at pending so kds picks it up.
 export async function createOrder(
@@ -329,13 +400,28 @@ export async function createOrder(
   // own price.
   const lineTotal = cartTotal(pricedLines);
 
-  const { data: allocated, error: ticketError } = await supabase.rpc(
-    "allocate_ticket_number",
-    {
+  // These reads do not depend on each other. Running them together removes
+  // two network round trips from every online checkout.
+  const [
+    { data: allocated, error: ticketError },
+    { data: settings },
+    { data: openShift },
+  ] = await Promise.all([
+    supabase.rpc("allocate_ticket_number", {
       p_ticket_date: input.ticketDate,
       p_requested_number: input.ticketNumber ?? null,
-    },
-  );
+    }),
+    supabase
+      .from("app_settings")
+      .select("*")
+      .eq("id", "global")
+      .maybeSingle(),
+    supabase
+      .from("shifts")
+      .select("id")
+      .is("closed_at", null)
+      .maybeSingle(),
+  ]);
 
   if (ticketError || !allocated) {
     return {
@@ -353,16 +439,6 @@ export async function createOrder(
       month: "2-digit",
       day: "2-digit",
     }).format(new Date());
-
-  // `*` rather than a column list on purpose: naming tax_enabled here would
-  // make the whole read fail on a database where the tax migration has not
-  // been applied, and losing kds_enabled with it would silently stop sending
-  // tickets to the kitchen. asking for everything degrades instead.
-  const { data: settings } = await supabase
-    .from("app_settings")
-    .select("*")
-    .eq("id", "global")
-    .maybeSingle();
 
   const initialStatus = settings?.kds_enabled ? "pending" : "completed";
 
@@ -384,14 +460,8 @@ export async function createOrder(
   // if even that fails the sale goes through unattached rather than not at all.
   let shiftId: string | null = null;
   {
-    const { data: open } = await supabase
-      .from("shifts")
-      .select("id")
-      .is("closed_at", null)
-      .maybeSingle();
-
-    if (open) {
-      shiftId = open.id;
+    if (openShift) {
+      shiftId = openShift.id;
     } else {
       const { data: started } = await supabase
         .from("shifts")
@@ -445,7 +515,7 @@ export async function createOrder(
       ticket_date: ticketDate,
       ticket_number: allocated,
     })
-    .select("id, ticket_date, ticket_number")
+    .select("id, ticket_date, ticket_number, created_at")
     .single();
 
   if (orderError || !order) {
@@ -499,17 +569,22 @@ export async function createOrder(
     };
   }
 
-  // touch the order so kds gets a realtime event now that the lines exist.
-  // the insert event above fires before order_items are written.
-  await supabase
-    .from("orders")
-    .update({ status: initialStatus })
-    .eq("id", order.id);
+  // The lines are already committed before these two independent operations.
+  // Keep the realtime touch and stock deduction together so checkout does not
+  // wait for another round trip after payment.
+  const [{ error: statusError }, { error: deductError }] = await Promise.all([
+    supabase
+      .from("orders")
+      .update({ status: initialStatus })
+      .eq("id", order.id),
+    supabase.rpc("deduct_stock_for_order", {
+      p_order_id: order.id,
+    }),
+  ]);
 
-  // pull raw materials for this sale (idempotent in postgres)
-  const { error: deductError } = await supabase.rpc("deduct_stock_for_order", {
-    p_order_id: order.id,
-  });
+  if (statusError) {
+    console.error("order status update failed", statusError.message);
+  }
 
   if (deductError) {
     // sale still stands - stock can be fixed by admin. do not cancel the ticket.
@@ -522,6 +597,20 @@ export async function createOrder(
     total,
     ticketDate: order.ticket_date ?? ticketDate,
     ticketNumber: order.ticket_number ?? Number(allocated),
+    receipt: receiptFromCheckout({
+      pricedLines,
+      ticket: order.ticket_number ?? Number(allocated),
+      createdAt: order.created_at,
+      orderType: input.orderType,
+      paymentMethod: input.paymentMethod,
+      cashier: profile.name,
+      customerName,
+      customerPhone,
+      priced,
+      notes: input.notes,
+      isDiyafa,
+      diyafaReason,
+    }),
   };
 }
 
