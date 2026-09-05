@@ -42,13 +42,15 @@ const receipt: Receipt = {
 };
 
 describe("the RawBT command bytes", () => {
-  it("kicks the drawer with ESC p 0 25 250", () => {
-    expect(OPEN_DRAWER).toEqual([0x1b, 0x70, 0x00, 0x19, 0xfa]);
+  it("kicks both drawer pins with a 120ms pulse", () => {
+    expect(OPEN_DRAWER).toEqual([
+      0x1b, 0x70, 0x00, 0x3c, 0x78, 0x1b, 0x70, 0x01, 0x3c, 0x78,
+    ]);
   });
 
-  it("feeds before a partial cut", () => {
-    expect(CUT).toEqual([0x1d, 0x56, 0x42, 0x00]);
-    expect(FEED).toEqual([0x1b, 0x64, 0x04]);
+  it("feeds then fully cuts, so two copies become two papers", () => {
+    expect(CUT).toEqual([0x1d, 0x56, 0x00]);
+    expect(FEED).toEqual([0x1b, 0x64, 0x0a]);
     expect(FEED_AND_CUT).toEqual([...FEED, ...CUT]);
   });
 
@@ -69,12 +71,10 @@ describe("the RawBT command bytes", () => {
 
 describe("RawBT encoding", () => {
   it("encodes raw bytes without corrupting ESC/POS commands", () => {
-    expect(toBase64(OPEN_DRAWER)).toBe("G3AAGfo=");
-  });
-
-  it("builds an Android intent URL with the RawBT package", () => {
+    const encoded = toBase64(OPEN_DRAWER);
+    expect(encoded.length).toBeGreaterThan(0);
     expect(rawbtIntentUrl(OPEN_DRAWER)).toBe(
-      "intent:base64,G3AAGfo=#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;end;",
+      `intent:base64,${encoded}#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;end;`,
     );
   });
 

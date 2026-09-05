@@ -24,7 +24,7 @@ const ACTIONS = [
   },
   {
     label: "Feed and cut",
-    detail: "Feeds four lines, then cuts. The roll should advance and cut.",
+    detail: "Feeds the roll past the blade, then fully cuts.",
     href: rawbtIntentUrl(FEED_AND_CUT),
   },
 ];

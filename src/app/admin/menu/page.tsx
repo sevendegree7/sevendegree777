@@ -15,14 +15,13 @@ export default async function AdminMenuPage({
   const tab = params.tab === "extras" ? "extras" : "products";
   const supabase = await createClient();
 
-  const [productsResult, categoriesResult, extrasResult] = await Promise.all([
-    supabase.from("products").select("*").order("sort_order"),
-    supabase
-      .from("categories")
-      .select("*")
-      .order("sort_order"),
-    supabase.from("modifiers").select("*").order("created_at"),
-  ]);
+  const [productsResult, categoriesResult, extrasResult, stockResult] =
+    await Promise.all([
+      supabase.from("products").select("*").order("sort_order"),
+      supabase.from("categories").select("*").order("sort_order"),
+      supabase.from("modifiers").select("*").order("created_at"),
+      supabase.from("product_stock").select("*"),
+    ]);
 
   const loadError =
     productsResult.error ?? categoriesResult.error ?? extrasResult.error;
@@ -41,6 +40,7 @@ export default async function AdminMenuPage({
         <ProductManager
           products={productsResult.data ?? []}
           categories={categoriesResult.data ?? []}
+          stock={stockResult.data ?? []}
         />
       )}
     </AdminShell>

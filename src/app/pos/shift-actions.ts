@@ -1,6 +1,8 @@
 "use server";
 
+import { startOfTruckDayIso } from "@/lib/reports/dates";
 import { buildShiftReport, type ShiftReport } from "@/lib/pos/shift-report";
+import { summariseTodaySales, type TodaySales } from "@/lib/pos/today-sales";
 import { createClient } from "@/lib/supabase/server";
 import type { Shift } from "@/types/database.types";
 
@@ -181,6 +183,19 @@ export async function currentShift(): Promise<{
 
   const summary = await summarise(supabase, shift);
   return { shift: summary.shift, report: summary.report };
+}
+
+// every live ticket since midnight cairo time. one tablet, one day's
+// takings - the same set admin sees under today, not "who opened the shift".
+export async function todaySales(): Promise<TodaySales> {
+  const supabase = await createClient();
+
+  const { data: orders } = await supabase
+    .from("orders")
+    .select("total_amount, status, created_at")
+    .gte("created_at", startOfTruckDayIso());
+
+  return summariseTodaySales(orders ?? []);
 }
 
 // the last few closed shifts, so the owner can reprint a report they walked

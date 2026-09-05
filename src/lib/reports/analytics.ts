@@ -12,6 +12,9 @@ export type ReportOrder = {
   status: string;
   created_at: string;
   created_by: string | null;
+  // snapshotted at checkout. reports must use this, not the live profile
+  // name, or a rename (or a leftover login) makes admin disagree with the till.
+  created_by_name?: string | null;
 };
 
 export type ReportLine = {
@@ -93,7 +96,11 @@ export function buildReportSummary(input: {
     const type = order.order_type;
     const day = truckDayKey(order.created_at);
     const hour = truckHour(order.created_at);
-    const cashier = order.created_by ?? "unknown";
+    const cashier =
+      order.created_by_name?.trim() ||
+      (order.created_by
+        ? (input.cashierNames[order.created_by] ?? "Cashier")
+        : "Unknown");
 
     const payment = paymentMap.get(pay) ?? { amount: 0, count: 0 };
     payment.amount = toPounds(toPiastres(payment.amount) + toPiastres(amount));
@@ -184,10 +191,7 @@ export function buildReportSummary(input: {
     byCashier: [...cashierMap.entries()]
       .map(([key, value]) => ({
         key,
-        label:
-          key === "unknown"
-            ? "Unknown"
-            : (input.cashierNames[key] ?? "Cashier"),
+        label: key,
         amount: value.amount,
         count: value.count,
       }))

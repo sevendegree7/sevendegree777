@@ -58,6 +58,7 @@ export async function createProduct(input: {
   isAvailable: boolean;
   pieceCount: string;
   contentsCategoryId: string;
+  openingStock?: string;
 }): Promise<ActionResult> {
   const { supabase, error } = await requireAdmin();
   if (error) return { ok: false, message: error };
@@ -99,6 +100,11 @@ export async function createProduct(input: {
     contentsCategoryId = input.contentsCategoryId;
   }
 
+  const openingStock = parseAmount(input.openingStock ?? "");
+  if (openingStock !== null && openingStock < 0) {
+    return { ok: false, message: "stock must be zero or more" };
+  }
+
   const { data: existing } = await supabase
     .from("products")
     .select("sort_order")
@@ -126,9 +132,13 @@ export async function createProduct(input: {
     return { ok: false, message: insertError?.message ?? "could not create product" };
   }
 
-  // finished-goods stock needs a row before the first delivery is logged
+  // finished-goods stock needs a row before the first delivery is logged.
+  // opening stock is optional: leave it blank and the shelf starts at zero.
   await supabase.from("product_stock").upsert(
-    { product_id: created.id },
+    {
+      product_id: created.id,
+      current_stock: isBox || openingStock === null ? 0 : openingStock,
+    },
     { onConflict: "product_id" },
   );
 
@@ -627,6 +637,48 @@ export async function receiveProductStock(input: {
   revalidatePath("/admin/inventory");
   revalidatePath("/admin");
   return { ok: true, message: "finished stock received" };
+}
+
+// overwrite the count on the shelf. receive only adds, so a typo (20 instead
+// of 12) had no way back down without logging fake waste.
+export async function setProductStock(input: {
+  productId: string;
+  quantity: string;
+}): Promise<ActionResult> {
+  const { supabase, error } = await requireAdmin();
+  if (error) return { ok: false, message: error };
+
+  const quantity = parseAmount(input.quantity);
+  if (quantity === null || quantity < 0) {
+    return { ok: false, message: "enter a stock of zero or more" };
+  }
+
+  const { data: product } = await supabase
+    .from("products")
+    .select("id, piece_count")
+    .eq("id", input.productId)
+    .maybeSingle();
+
+  if (!product) return { ok: false, message: "product not found" };
+  if (product.piece_count) {
+    return { ok: false, message: "boxes are packed from other items, so they have no stock of their own" };
+  }
+
+  const { error: upsertError } = await supabase.from("product_stock").upsert(
+    {
+      product_id: input.productId,
+      current_stock: quantity,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "product_id" },
+  );
+
+  if (upsertError) return { ok: false, message: upsertError.message };
+
+  revalidatePath("/admin/menu");
+  revalidatePath("/admin/inventory");
+  revalidatePath("/admin");
+  return { ok: true, message: "stock updated" };
 }
 
 export async function updateProductStockThreshold(input: {

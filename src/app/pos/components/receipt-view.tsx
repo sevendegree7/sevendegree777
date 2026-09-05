@@ -127,9 +127,10 @@ export function ReceiptView({
           <button
             type="button"
             onClick={() => {
-              // Direct ESC/POS printing is used on the Android till. The
-              // browser path remains available on Windows/iOS and if RawBT
-              // is not installed.
+              // android till talks to the xp-80 through rawbt. if that
+              // channel is not there, fall back to one browser job per
+              // copy - a single window.print() of both papers is what
+              // started coming out as one uncut strip.
               if (
                 !printReceiptToRawBt(
                   receipt,
@@ -140,8 +141,7 @@ export function ReceiptView({
                     !receipt.isDiyafa,
                 )
               ) {
-                applyReceiptPageSize(document);
-                window.print();
+                void print();
               }
             }}
             className="flex-[2] rounded-xl bg-navy px-4 py-3 text-base font-semibold text-cream dark:bg-accent-surface dark:text-accent-ink"

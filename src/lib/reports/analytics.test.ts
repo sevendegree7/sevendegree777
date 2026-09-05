@@ -23,6 +23,7 @@ describe("buildReportSummary", () => {
           status: "completed",
           created_at: "2026-08-05T12:00:00.000Z",
           created_by: "c1",
+          created_by_name: "Sara",
         },
         {
           id: "2",
@@ -32,6 +33,7 @@ describe("buildReportSummary", () => {
           status: "completed",
           created_at: "2026-08-05T15:00:00.000Z",
           created_by: "c1",
+          created_by_name: "Sara",
         },
         {
           id: "3",
@@ -62,5 +64,27 @@ describe("buildReportSummary", () => {
     expect(summary.cancelledCount).toBe(1);
     expect(summary.byCashier[0]?.label).toBe("Sara");
     expect(summary.topItems[0]?.qty).toBe(2);
+  });
+
+  it("names the cashier from the sale, not the live profile", () => {
+    const summary = buildReportSummary({
+      orders: [
+        {
+          id: "1",
+          total_amount: 100,
+          payment_method: "cash",
+          order_type: "takeaway",
+          status: "completed",
+          created_at: "2026-09-05T12:00:00.000Z",
+          created_by: "c1",
+          created_by_name: "acashier",
+        },
+      ],
+      cancelledCount: 0,
+      lines: [],
+      cashierNames: { c1: "moksha" },
+    });
+
+    expect(summary.byCashier[0]?.label).toBe("acashier");
   });
 });

@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 
 import {
   receiveProductStock,
+  setProductStock,
   updateProductStockThreshold,
 } from "@/app/admin/actions";
 import type { Product, ProductStock } from "@/types/database.types";
@@ -37,10 +38,12 @@ export function FinishedStockPanel({
 
 function FinishedStockRow({ row }: { row: Row }) {
   const [addQuantity, setAddQuantity] = useState("0");
+  const [setQuantity, setSetQuantity] = useState(String(row.current_stock));
+  const [shownStock, setShownStock] = useState(row.current_stock);
   const [threshold, setThreshold] = useState(String(row.min_threshold));
   const [message, setMessage] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
-  const low = row.current_stock <= row.min_threshold;
+  const low = shownStock <= row.min_threshold;
 
   function receive() {
     setMessage(null);
@@ -50,7 +53,30 @@ function FinishedStockRow({ row }: { row: Row }) {
         addQuantity,
       });
       setMessage(result.ok ? result.message ?? "received" : result.message);
-      if (result.ok) setAddQuantity("0");
+      if (result.ok) {
+        const added = Number(addQuantity);
+        if (Number.isFinite(added) && added > 0) {
+          const next = shownStock + added;
+          setShownStock(next);
+          setSetQuantity(String(next));
+        }
+        setAddQuantity("0");
+      }
+    });
+  }
+
+  function correct() {
+    setMessage(null);
+    startTransition(async () => {
+      const result = await setProductStock({
+        productId: row.product_id,
+        quantity: setQuantity,
+      });
+      setMessage(result.ok ? result.message ?? "stock updated" : result.message);
+      if (result.ok) {
+        const next = Number(setQuantity);
+        if (Number.isFinite(next)) setShownStock(next);
+      }
     });
   }
 
@@ -77,7 +103,7 @@ function FinishedStockRow({ row }: { row: Row }) {
         <div>
           <p className="font-medium">{row.name}</p>
           <p className="text-sm text-muted">
-            {row.current_stock} pieces in vitrine{low ? " · low" : ""}
+            {shownStock} pieces in vitrine{low ? " · low" : ""}
           </p>
         </div>
         <div className="flex flex-wrap items-end gap-2">
@@ -99,6 +125,25 @@ function FinishedStockRow({ row }: { row: Row }) {
             className="rounded-xl bg-navy dark:bg-accent-surface dark:text-accent-ink px-4 py-2 text-sm text-cream disabled:opacity-50"
           >
             receive
+          </button>
+          <label className="text-sm">
+            correct to
+            <input
+              type="number"
+              min="0"
+              step="1"
+              value={setQuantity}
+              onChange={(event) => setSetQuantity(event.target.value)}
+              className="mt-1 block w-28 rounded-xl border border-line px-3 py-2"
+            />
+          </label>
+          <button
+            type="button"
+            disabled={pending}
+            onClick={correct}
+            className="rounded-xl border border-line px-4 py-2 text-sm disabled:opacity-50"
+          >
+            set stock
           </button>
           <label className="text-sm">
             low at

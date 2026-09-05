@@ -24,7 +24,12 @@ import {
 import { cartLinesFromOrder } from "@/lib/pos/edit-order";
 import { formatMoney } from "@/lib/pos/money";
 import { newOrderId } from "@/lib/pos/order-id";
-import { openCashDrawer } from "@/lib/pos/rawbt";
+import {
+  OPEN_DRAWER,
+  openCashDrawer,
+  rawBtAvailable,
+  rawbtIntentUrl,
+} from "@/lib/pos/rawbt";
 import {
   boxContentsSignature,
   isBoxProduct,
@@ -32,6 +37,7 @@ import {
 import { groupModifiersByProduct } from "@/lib/pos/modifiers";
 import { buildReceipt, type Receipt } from "@/lib/pos/receipt";
 import type { ShiftReport } from "@/lib/pos/shift-report";
+import { type TodaySales } from "@/lib/pos/today-sales";
 import { readTaxSettings } from "@/lib/pos/tax";
 import { primeTicketCounter } from "@/lib/pos/ticket-counter";
 import type {
@@ -46,7 +52,7 @@ import type {
 } from "@/types/database.types";
 
 import { type CheckoutLine } from "./actions";
-import { currentShift } from "./shift-actions";
+import { currentShift, todaySales } from "./shift-actions";
 import { CartPanel } from "./components/cart-panel";
 import { BoxBuilderModal } from "./components/box-builder-modal";
 import { CategoryTabs } from "./components/category-tabs";
@@ -75,6 +81,7 @@ type PosScreenProps = {
   // thing in the morning, and also what a till with no shifts table answers.
   initialShift: Shift | null;
   initialShiftReport: ShiftReport | null;
+  initialTodaySales: TodaySales;
 };
 
 // the message under the header.
@@ -104,6 +111,7 @@ export function PosScreen({
   canVoid,
   initialShift,
   initialShiftReport,
+  initialTodaySales,
 }: PosScreenProps) {
   // the tax rule as the server last handed it over. read once here rather than
   // in the cart, so the ticket the cashier reads out and the sale that gets
@@ -136,6 +144,7 @@ export function PosScreen({
   const [shiftReport, setShiftReport] = useState<ShiftReport | null>(
     initialShiftReport,
   );
+  const [salesToday, setSalesToday] = useState<TodaySales>(initialTodaySales);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   // the sale being corrected. the old ticket is not touched until the new one
@@ -163,6 +172,25 @@ export function PosScreen({
   const uploadError = useUploadError();
   const connection = useConnection();
   const offline = connection === "offline";
+
+  // after an offline sale uploads, it leaves the tablet store. pull today's
+  // cloud total again so the bar does not drop that sale from the number.
+  useEffect(() => {
+    if (connection === "offline") return;
+
+    let cancelled = false;
+    void todaySales()
+      .then((next) => {
+        if (!cancelled) setSalesToday(next);
+      })
+      .catch(() => {
+        // keep the last number. a failed read is not a zero day.
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [waitingSales, connection]);
 
   useEffect(() => {
     if (initialTicketDate) {
@@ -337,9 +365,13 @@ export function PosScreen({
   // failing quietly is right: the running total is a convenience, not the sale.
   async function refreshShift() {
     try {
-      const next = await currentShift();
+      const [next, nextToday] = await Promise.all([
+        currentShift(),
+        todaySales(),
+      ]);
       setShift(next.shift);
       setShiftReport(next.report);
+      setSalesToday(nextToday);
     } catch {
       // offline, or no shifts table yet. the bar keeps what it had.
     }
@@ -482,6 +514,12 @@ export function PosScreen({
     }
 
     checkoutLock.current = true;
+
+    // cash needs the drawer in this same tap. chrome drops the rawbt link
+    // after any await, so this cannot wait for the sale to come back.
+    if (paymentMethod === "cash" && !isDiyafa && total > 0) {
+      openCashDrawer();
+    }
 
     const lines: CheckoutLine[] = cart.map((line) => ({
       productId: line.productId,
@@ -631,20 +669,27 @@ export function PosScreen({
           >
             {t("pos.orders")}
           </button>
-          <button
-            type="button"
-            onClick={() => {
-              if (!openCashDrawer()) {
+          {rawBtAvailable() ? (
+            <a
+              href={rawbtIntentUrl(OPEN_DRAWER)}
+              className="rounded-full border border-line bg-raised px-3 py-1 text-sm"
+            >
+              {t("drawer.open")}
+            </a>
+          ) : (
+            <button
+              type="button"
+              onClick={() => {
                 setFeedback({
                   kind: "error",
                   key: "drawer.androidOnly",
                 });
-              }
-            }}
-            className="rounded-full border border-line bg-raised px-3 py-1 text-sm"
-          >
-            {t("drawer.open")}
-          </button>
+              }}
+              className="rounded-full border border-line bg-raised px-3 py-1 text-sm"
+            >
+              {t("drawer.open")}
+            </button>
+          )}
           {offline ? (
             <span className="text-sm text-muted">{t("pos.offlineSaved")}</span>
           ) : null}
@@ -680,6 +725,7 @@ export function PosScreen({
         <ShiftBar
           shift={shift}
           report={shiftReport}
+          today={salesToday}
           offline={offline}
           onChanged={(next) => {
             setShift(next.shift);

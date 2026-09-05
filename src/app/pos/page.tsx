@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import type { AppSettings } from "@/types/database.types";
 
 import { PosScreen } from "./pos-screen";
-import { currentShift } from "./shift-actions";
+import { currentShift, todaySales } from "./shift-actions";
 
 // cashier home - loads the menu on the server then hands it to the touch ui.
 // if that read fails we hand over null and the screen asks the data source
@@ -27,6 +27,7 @@ export default async function PosPage() {
     ticketResult,
     profileResult,
     shift,
+    salesToday,
   ] = await Promise.all([
     supabase.from("categories").select("*").order("sort_order"),
     // only sellable items reach the grid
@@ -57,6 +58,7 @@ export default async function PosPage() {
     // whoever has the drawer right now. answers with nulls rather than throwing
     // when nothing is open, so the bar renders either way.
     currentShift(),
+    todaySales(),
   ]);
 
   const loadError =
@@ -90,6 +92,7 @@ export default async function PosPage() {
         canVoid={profileResult.data?.role === "admin"}
         initialShift={shift.shift}
         initialShiftReport={shift.report}
+        initialTodaySales={salesToday}
       />
     </RoleShell>
   );

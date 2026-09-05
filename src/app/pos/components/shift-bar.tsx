@@ -1,11 +1,18 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 
+import { useLocalOrders } from "@/lib/data/use-local-orders";
 import { useTranslate } from "@/lib/i18n/use-language";
 import { formatMoney } from "@/lib/pos/money";
-import { formatTruckTime } from "@/lib/pos/receipt";
 import type { ShiftReport } from "@/lib/pos/shift-report";
+import {
+  mergeTodaySales,
+  salesOnTruckDay,
+  summariseTodaySales,
+  type TodaySales,
+} from "@/lib/pos/today-sales";
+import { startOfTruckDayIso } from "@/lib/reports/dates";
 import type { Shift } from "@/types/database.types";
 
 import { closeShift, openShift } from "../shift-actions";
@@ -14,6 +21,7 @@ import { ShiftReportView } from "./shift-report-view";
 type ShiftBarProps = {
   shift: Shift | null;
   report: ShiftReport | null;
+  today: TodaySales;
   // sales are not blocked when this is offline - the till keeps selling and the
   // sale attaches to whichever drawer is open when it uploads
   offline: boolean;
@@ -22,12 +30,31 @@ type ShiftBarProps = {
 
 // the drawer, on one line above the menu.
 //
-// it says who has the till and what is in it, and it is the only place the
-// shift is opened or closed. it never blocks a sale: a cashier who forgets to
-// open one gets a shift opened for them on their first sale, because a till
-// that refuses to sell during a rush is worse than a shift with a zero float.
-export function ShiftBar({ shift, report, offline, onChanged }: ShiftBarProps) {
+// today's sales are the number the cashier reads. the old "since 3:56" line
+// was the shift-open time, not takings. open/close still live here, and a
+// forgotten open still gets created on the first sale.
+export function ShiftBar({
+  shift,
+  report,
+  today,
+  offline,
+  onChanged,
+}: ShiftBarProps) {
   const { t } = useTranslate();
+  const localOrders = useLocalOrders();
+  const todaySales = useMemo(() => {
+    const waiting = summariseTodaySales(
+      salesOnTruckDay(
+        localOrders.map((order) => ({
+          total_amount: Number(order.total_amount),
+          status: order.status,
+          created_at: order.created_at,
+        })),
+        startOfTruckDayIso(),
+      ),
+    );
+    return mergeTodaySales(today, waiting);
+  }, [today, localOrders]);
   const [dialog, setDialog] = useState<"open" | "close" | null>(null);
   const [amount, setAmount] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -78,17 +105,16 @@ export function ShiftBar({ shift, report, offline, onChanged }: ShiftBarProps) {
     <>
       {shift ? (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-line bg-raised px-4 py-2 text-sm">
-          <span className="font-medium">
-            {t("shift.openedBy", {
-              name: shift.opened_by_name,
-              time: formatTruckTime(shift.opened_at).split(", ")[1] ?? "",
+          <span className="font-medium">{t("shift.today")}</span>
+          <span>
+            {t("shift.todaySales", {
+              count: todaySales.orderCount,
+              total: formatMoney(todaySales.salesTotal),
             })}
           </span>
-          {report ? (
-            <span className="text-muted">
-              {report.orderCount} · {formatMoney(report.salesTotal)}
-            </span>
-          ) : null}
+          <span className="text-muted">
+            {t("shift.onShift", { name: shift.opened_by_name })}
+          </span>
           <button
             type="button"
             onClick={() => {
@@ -103,8 +129,15 @@ export function ShiftBar({ shift, report, offline, onChanged }: ShiftBarProps) {
           </button>
         </div>
       ) : (
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl bg-warn/15 px-4 py-2 text-sm text-warn">
-          <span className="font-medium">{t("shift.none")}</span>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl bg-warn/15 px-4 py-2 text-sm">
+          <span className="font-medium text-ink">{t("shift.today")}</span>
+          <span className="text-ink">
+            {t("shift.todaySales", {
+              count: todaySales.orderCount,
+              total: formatMoney(todaySales.salesTotal),
+            })}
+          </span>
+          <span className="text-warn">{t("shift.none")}</span>
           <button
             type="button"
             onClick={() => {
@@ -113,7 +146,7 @@ export function ShiftBar({ shift, report, offline, onChanged }: ShiftBarProps) {
               setError(null);
             }}
             disabled={offline}
-            className="ms-auto rounded-full border border-warn px-3 py-1 disabled:opacity-40"
+            className="ms-auto rounded-full border border-warn px-3 py-1 text-warn disabled:opacity-40"
           >
             {t("shift.open")}
           </button>

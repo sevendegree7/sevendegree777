@@ -7,18 +7,24 @@ import { useState, useTransition } from "react";
 import {
   archiveProduct,
   createProduct,
+  setProductStock,
   updateProduct,
 } from "@/app/admin/actions";
 import { useTranslate } from "@/lib/i18n/use-language";
 import { formatMoney } from "@/lib/pos/money";
-import type { Category, Product } from "@/types/database.types";
+import type { Category, Product, ProductStock } from "@/types/database.types";
 
 type ProductManagerProps = {
   products: Product[];
   categories: Category[];
+  stock: ProductStock[];
 };
 
-export function ProductManager({ products, categories }: ProductManagerProps) {
+export function ProductManager({
+  products,
+  categories,
+  stock,
+}: ProductManagerProps) {
   const { t } = useTranslate();
   const [showArchived, setShowArchived] = useState(false);
 
@@ -60,6 +66,12 @@ export function ProductManager({ products, categories }: ProductManagerProps) {
               key={product.id}
               product={product}
               categories={activeCategories}
+              currentStock={
+                Number(
+                  stock.find((entry) => entry.product_id === product.id)
+                    ?.current_stock ?? 0,
+                )
+              }
               categoryName={
                 product.category_id
                   ? (categories.find((category) => category.id === product.category_id)
@@ -88,6 +100,7 @@ function CreateProductForm({ categories }: { categories: Category[] }) {
       "",
   );
   const [available, setAvailable] = useState(true);
+  const [openingStock, setOpeningStock] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -107,11 +120,13 @@ function CreateProductForm({ categories }: { categories: Category[] }) {
         isAvailable: available,
         pieceCount,
         contentsCategoryId,
+        openingStock,
       });
       setMessage(result.message ?? (result.ok ? t("admin.menu.created") : ""));
       if (result.ok) {
         setName("");
         setPrice("");
+        setOpeningStock("");
         setAvailable(true);
       }
     });
@@ -190,7 +205,20 @@ function CreateProductForm({ categories }: { categories: Category[] }) {
               </select>
             </label>
           </>
-        ) : null}
+        ) : (
+          <label className="text-sm">
+            {t("admin.menu.openingStock")}
+            <input
+              type="number"
+              min="0"
+              step="1"
+              value={openingStock}
+              onChange={(event) => setOpeningStock(event.target.value)}
+              placeholder="0"
+              className="mt-1 block w-full rounded-xl border border-line bg-surface px-3 py-3 text-ink"
+            />
+          </label>
+        )}
 
         <label className="flex min-h-11 items-center gap-2 text-sm sm:col-span-2">
           <input
@@ -221,10 +249,12 @@ function ProductRow({
   product,
   categories,
   categoryName,
+  currentStock,
 }: {
   product: Product;
   categories: Category[];
   categoryName: string;
+  currentStock: number;
 }) {
   const { t } = useTranslate();
   const [name, setName] = useState(product.name);
@@ -240,6 +270,8 @@ function ProductRow({
       "",
   );
   const [available, setAvailable] = useState(product.is_available);
+  const [stock, setStock] = useState(String(currentStock));
+  const [shownStock, setShownStock] = useState(currentStock);
   const [message, setMessage] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -261,7 +293,40 @@ function ProductRow({
         pieceCount,
         contentsCategoryId,
       });
-      setMessage(result.message ?? (result.ok ? t("admin.menu.saved") : ""));
+      if (!result.ok) {
+        setMessage(result.message);
+        return;
+      }
+
+      if (!isBox) {
+        const stockResult = await setProductStock({
+          productId: product.id,
+          quantity: stock,
+        });
+        if (!stockResult.ok) {
+          setMessage(stockResult.message);
+          return;
+        }
+        const next = Number(stock);
+        if (Number.isFinite(next)) setShownStock(next);
+      }
+
+      setMessage(t("admin.menu.saved"));
+    });
+  }
+
+  function saveStock() {
+    setMessage(null);
+    startTransition(async () => {
+      const result = await setProductStock({
+        productId: product.id,
+        quantity: stock,
+      });
+      setMessage(result.message ?? (result.ok ? t("admin.menu.stockSet") : ""));
+      if (result.ok) {
+        const next = Number(stock);
+        if (Number.isFinite(next)) setShownStock(next);
+      }
     });
   }
 
@@ -289,7 +354,7 @@ function ProductRow({
             {formatMoney(Number(product.base_price))}
             {product.piece_count
               ? ` · ${t("admin.menu.packOf", { count: product.piece_count })}`
-              : ""}
+              : ` · ${t("admin.menu.stockNow", { count: shownStock })}`}
           </p>
         </div>
         {!product.is_available ? (
@@ -362,7 +427,19 @@ function ProductRow({
               </select>
             </label>
           </>
-        ) : null}
+        ) : (
+          <label className="text-sm">
+            {t("admin.menu.stock")}
+            <input
+              type="number"
+              min="0"
+              step="1"
+              value={stock}
+              onChange={(event) => setStock(event.target.value)}
+              className="mt-1 block w-full rounded-xl border border-line bg-surface px-3 py-2.5 text-ink"
+            />
+          </label>
+        )}
         <label className="flex min-h-11 items-center gap-2 text-sm sm:col-span-2">
           <input
             type="checkbox"
@@ -383,6 +460,16 @@ function ProductRow({
         >
           {pending ? t("admin.menu.saving") : t("admin.menu.save")}
         </button>
+        {isBox ? null : (
+          <button
+            type="button"
+            disabled={pending}
+            onClick={saveStock}
+            className="min-h-11 rounded-xl border border-line px-4 py-2 text-sm disabled:opacity-60"
+          >
+            {pending ? t("admin.menu.saving") : t("admin.menu.setStock")}
+          </button>
+        )}
         <button
           type="button"
           disabled={pending}

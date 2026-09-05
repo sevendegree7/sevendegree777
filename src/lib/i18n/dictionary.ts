@@ -205,6 +205,9 @@ const en = {
   "shift.byCashier": "By cashier",
   "shift.cancel": "Cancel",
   "shift.liveHint": "Running total for this drawer",
+  "shift.today": "Today",
+  "shift.todaySales": "{count} sales · {total}",
+  "shift.onShift": "Shift: {name}",
 
   "status.pending": "Pending",
   "status.preparing": "Preparing",
@@ -249,6 +252,11 @@ const en = {
   "admin.menu.productCount": "{count} products",
   "admin.menu.uncategorized": "Uncategorized",
   "admin.menu.packOf": "pack of {count}",
+  "admin.menu.stock": "Stock (pieces)",
+  "admin.menu.stockNow": "{count} in stock",
+  "admin.menu.openingStock": "Opening stock (pieces)",
+  "admin.menu.setStock": "Set stock",
+  "admin.menu.stockSet": "Stock updated",
 
   "admin.extras.title": "Extras for every item",
   "admin.extras.hint":
@@ -471,6 +479,9 @@ const ar: Record<TranslationKey, string> = {
   "shift.byCashier": "لكل كاشير",
   "shift.cancel": "إلغاء",
   "shift.liveHint": "إجمالي الدرج لحد دلوقتي",
+  "shift.today": "النهارده",
+  "shift.todaySales": "{count} أوردر · {total}",
+  "shift.onShift": "الشيفت: {name}",
 
   "status.pending": "في الانتظار",
   "status.preparing": "قيد التحضير",
@@ -515,6 +526,11 @@ const ar: Record<TranslationKey, string> = {
   "admin.menu.productCount": "{count} أصناف",
   "admin.menu.uncategorized": "بدون قسم",
   "admin.menu.packOf": "علبة من {count}",
+  "admin.menu.stock": "المخزون (قطع)",
+  "admin.menu.stockNow": "{count} قطعة في المخزون",
+  "admin.menu.openingStock": "المخزون الافتتاحي (قطع)",
+  "admin.menu.setStock": "تعديل المخزون",
+  "admin.menu.stockSet": "تم تحديث المخزون",
 
   "admin.extras.title": "إضافات لكل الأصناف",
   "admin.extras.hint":

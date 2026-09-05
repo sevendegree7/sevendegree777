@@ -57,7 +57,7 @@ export default async function AdminReportsPage({
   let ordersQuery = supabase
     .from("orders")
     .select(
-      "id, total_amount, tax_amount, discount_amount, is_diyafa, payment_method, order_type, status, created_at, created_by",
+      "id, total_amount, tax_amount, discount_amount, is_diyafa, payment_method, order_type, status, created_at, created_by, created_by_name",
     )
     .gte("created_at", since)
     .neq("status", "cancelled")

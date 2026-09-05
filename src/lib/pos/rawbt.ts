@@ -7,12 +7,26 @@ const RECEIPT_COLUMNS = 48;
 const ESC = 0x1b;
 const GS = 0x1d;
 
-// ESC p 0 25 250 - pulse the drawer pin for about 50ms.
-export const OPEN_DRAWER: readonly number[] = [ESC, 0x70, 0x00, 0x19, 0xfa];
-// Feed four lines before cutting so the last line clears the blade.
-export const FEED: readonly number[] = [ESC, 0x64, 0x04];
-// Partial cut leaves a small tab holding the receipt.
-export const CUT: readonly number[] = [GS, 0x56, 0x42, 0x00];
+// pulse both drawer pins. the xp-80t rj11 can be wired to pin 2 or pin 5,
+// and 50ms was too short for this drawer - 120ms on is what the xprinter
+// manual uses for a cash kick.
+export const OPEN_DRAWER: readonly number[] = [
+  ESC,
+  0x70,
+  0x00,
+  0x3c,
+  0x78,
+  ESC,
+  0x70,
+  0x01,
+  0x3c,
+  0x78,
+];
+// ten lines is about the 35mm the blade sits past the head on this printer.
+export const FEED: readonly number[] = [ESC, 0x64, 0x0a];
+// full cut. the last commit used a partial cut (gs v 66), which leaves the
+// two copies hanging on one strip.
+export const CUT: readonly number[] = [GS, 0x56, 0x00];
 export const FEED_AND_CUT: readonly number[] = [...FEED, ...CUT];
 
 export function toBase64(bytes: readonly number[]): string {
@@ -29,7 +43,16 @@ export function rawbtIntentUrl(bytes: readonly number[]): string {
 }
 
 function isAndroid(): boolean {
-  return typeof navigator !== "undefined" && /android/i.test(navigator.userAgent);
+  if (typeof navigator === "undefined") return false;
+  if (/android/i.test(navigator.userAgent)) return true;
+
+  // chrome "desktop site" drops android from the ua string
+  const hints = (
+    navigator as Navigator & {
+      userAgentData?: { platform?: string };
+    }
+  ).userAgentData;
+  return hints?.platform === "Android";
 }
 
 export function rawBtAvailable(): boolean {
@@ -179,7 +202,9 @@ function addReceiptCopy(
   }
 
   addText(bytes);
-  bytes.push(...FEED_AND_CUT);
+  // re-init after a full cut so the second copy starts a new ticket, not a
+  // continuation of the first job that some firmware will not slice.
+  bytes.push(...FEED_AND_CUT, ESC, 0x40);
 }
 
 export function receiptEscPos(receipt: Receipt, copies = 2): Uint8Array {
@@ -202,10 +227,18 @@ export function receiptEscPos(receipt: Receipt, copies = 2): Uint8Array {
 }
 
 function send(bytes: readonly number[]): boolean {
-  if (!rawBtAvailable()) return false;
+  if (typeof document === "undefined" || !rawBtAvailable()) return false;
 
-  // This is an Android custom URI, not a Next.js route.
-  window.location.href = rawbtIntentUrl(bytes);
+  // chrome will not follow a custom scheme from location.href in a pwa.
+  // a real tap on an <a> is the gesture it accepts - same as the test
+  // links on /admin/settings.
+  const link = document.createElement("a");
+  link.href = rawbtIntentUrl(bytes);
+  link.rel = "noopener";
+  link.style.display = "none";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
   return true;
 }
 
