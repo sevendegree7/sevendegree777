@@ -8,7 +8,7 @@ import {
   useTransition,
 } from "react";
 
-import { cancelOrder } from "@/app/pos/actions";
+import { cancelOrder, setOrderHidden } from "@/app/pos/actions";
 import { getDataSource } from "@/lib/data";
 import { useTranslate } from "@/lib/i18n/use-language";
 import { useLocalOrders } from "@/lib/data/use-local-orders";
@@ -67,6 +67,7 @@ export function OrderHistory({
   const [attempt, setAttempt] = useState(0);
   const [openOrderId, setOpenOrderId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [showHidden, setShowHidden] = useState(false);
   const [pending, startTransition] = useTransition();
 
   const localOrders = useLocalOrders();
@@ -110,16 +111,50 @@ export function OrderHistory({
 
   // newest first. mergeBoard hands back the kitchen's order, which is oldest
   // first, and a cashier looking something up wants the opposite.
-  const orders = useMemo(
+  const allOrders = useMemo(
     () => [...mergeBoard(cloudOrders, localOrders)].reverse(),
     [cloudOrders, localOrders],
   );
 
-  const openOrder = orders.find((order) => order.id === openOrderId) ?? null;
+  const hiddenCount = useMemo(
+    () => allOrders.filter((order) => order.hidden_at).length,
+    [allOrders],
+  );
+
+  // the filter is here and not in the query on purpose. `fetchRecentOrders`
+  // reads every sale of the day whatever status it ended on, and that is what
+  // makes the history able to answer "what happened to ticket 8" - hiding is a
+  // decision about this list, so it is made where the list is drawn. it also
+  // means the count above is honest without a second round trip.
+  const orders = useMemo(
+    () => (showHidden ? allOrders : allOrders.filter((order) => !order.hidden_at)),
+    [allOrders, showHidden],
+  );
+
+  // looked up in the unfiltered set: a receipt open on screen must not vanish
+  // because the row behind it was just taken off the list.
+  const openOrder = allOrders.find((order) => order.id === openOrderId) ?? null;
 
   const close = useCallback(() => {
     setOpenOrderId(null);
   }, []);
+
+  const hide = useCallback(
+    (order: KitchenOrder, hidden: boolean) => {
+      startTransition(async () => {
+        const result = await setOrderHidden(order.id, hidden);
+        setMessage(
+          result.ok
+            ? t(hidden ? "history.hidden" : "history.restored", {
+                ticket: result.ticket,
+              })
+            : result.message,
+        );
+        if (result.ok) setAttempt((count) => count + 1);
+      });
+    },
+    [t],
+  );
 
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-navy/60 p-4">
@@ -129,6 +164,20 @@ export function OrderHistory({
             {t("history.title")}
           </h2>
           <div className="flex gap-2">
+            {/* only offered to an admin, and only when there is something to
+                show. a cashier never learns the list is filtered at all -
+                which is the point of taking a void off it. */}
+            {canVoid && hiddenCount > 0 ? (
+              <button
+                type="button"
+                onClick={() => setShowHidden((shown) => !shown)}
+                className="rounded-xl border border-line px-3 py-2 text-sm text-muted"
+              >
+                {showHidden
+                  ? t("history.hideHidden")
+                  : t("history.showHidden", { count: String(hiddenCount) })}
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={() => {
@@ -190,9 +239,15 @@ export function OrderHistory({
             const onTabletOnly =
               order.client_id !== null &&
               localOrders.some((local) => local.client_id === order.client_id);
+            // already taken off the list, and only on screen because an admin
+            // asked to see what was taken off
+            const isHidden = Boolean(order.hidden_at);
 
             return (
-            <li key={order.id} className="flex items-stretch gap-2">
+            <li
+              key={order.id}
+              className={`flex items-stretch gap-2 ${isHidden ? "opacity-50" : ""}`}
+            >
               <button
                 type="button"
                 onClick={() => setOpenOrderId(order.id)}
@@ -219,6 +274,11 @@ export function OrderHistory({
                     // not in the day's takings in supabase yet.
                     <span className="block text-xs text-warn">
                       {t("history.onThisTablet")}
+                    </span>
+                  ) : null}
+                  {isHidden ? (
+                    <span className="block text-xs text-muted">
+                      {t("history.hiddenBadge")}
                     </span>
                   ) : null}
                 </span>
@@ -282,6 +342,48 @@ export function OrderHistory({
                     className="rounded-xl border border-danger px-3 py-2 text-sm text-danger disabled:opacity-40"
                   >
                     {t("history.cancel")}
+                  </button>
+                ) : null}
+                {/* only a cancelled ticket can leave the list. a live sale
+                    taken off it is one nobody can look up or reprint, while
+                    its money is still in the day - the server and the database
+                    both refuse that, this just does not offer it. */}
+                {canVoid && order.status === "cancelled" && !isHidden ? (
+                  <button
+                    type="button"
+                    disabled={offline || onTabletOnly || pending}
+                    title={
+                      offline
+                        ? t("history.editNeedsInternet")
+                        : onTabletOnly
+                          ? t("history.notUploaded")
+                          : undefined
+                    }
+                    onClick={() => {
+                      if (
+                        !window.confirm(
+                          t("history.confirmHide", {
+                            ticket: ticketNumber(order),
+                          }),
+                        )
+                      ) {
+                        return;
+                      }
+                      hide(order, true);
+                    }}
+                    className="rounded-xl border border-line px-3 py-2 text-sm text-muted disabled:opacity-40"
+                  >
+                    {t("history.hide")}
+                  </button>
+                ) : null}
+                {canVoid && isHidden ? (
+                  <button
+                    type="button"
+                    disabled={offline || pending}
+                    onClick={() => hide(order, false)}
+                    className="rounded-xl border border-line px-3 py-2 text-sm disabled:opacity-40"
+                  >
+                    {t("history.restore")}
                   </button>
                 ) : null}
               </div>

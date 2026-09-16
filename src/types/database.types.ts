@@ -139,6 +139,11 @@ export type Order = {
   // what the customer gave, if they gave it. both optional - see the migration
   customer_name?: string | null;
   customer_phone?: string | null;
+  // an admin took this cancelled ticket off the till's order history. the sale
+  // is untouched: still cancelled, still out of the takings, still in the
+  // cancelled count on the report. only the list stops showing it.
+  hidden_at?: string | null;
+  hidden_by?: string | null;
   // true after bom deduct ran for this order
   stock_deducted: boolean;
   // visible number resets every Egypt business day
@@ -362,6 +367,8 @@ export type Database = {
           shift_id?: string | null;
           customer_name?: string | null;
           customer_phone?: string | null;
+          hidden_at?: string | null;
+          hidden_by?: string | null;
           stock_deducted?: boolean;
           ticket_date?: string;
           ticket_number?: number;
@@ -393,6 +400,8 @@ export type Database = {
           shift_id?: string | null;
           customer_name?: string | null;
           customer_phone?: string | null;
+          hidden_at?: string | null;
+          hidden_by?: string | null;
           stock_deducted?: boolean;
           ticket_date?: string;
           ticket_number?: number;

@@ -657,7 +657,7 @@ export async function replaceOrder(
 
   // an edit voids the old ticket, so it is a cancel wearing a different hat
   // and it answers to the same rule. checked before anything is written.
-  const denied = await requireAdminForOrders(supabase, "edit an order");
+  const { denied } = await requireAdminForOrders(supabase, "edit an order");
   if (denied) return { ok: false, message: denied };
 
   const { data: original, error: readError } = await supabase
@@ -766,15 +766,22 @@ export type CancelOrderResult =
 // so both go through here, and the check is on the server. the buttons are
 // hidden in the till as well, but that is a courtesy to the cashier, not the
 // control - a hidden button is still a button somebody can call.
+//
+// it hands the admin's id back rather than a bare yes, because the operations
+// that need this check are the same ones worth signing: hiding a ticket writes
+// down who hid it, and asking auth a second time for a name we already looked
+// up is a round trip for nothing.
+type AdminCheck = { denied: string } | { denied: null; adminId: string };
+
 async function requireAdminForOrders(
   supabase: Awaited<ReturnType<typeof createClient>>,
   action: string,
-): Promise<string | null> {
+): Promise<AdminCheck> {
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user) return "session expired. sign in again.";
+  if (!user) return { denied: "session expired. sign in again." };
 
   const { data: profile } = await supabase
     .from("profiles")
@@ -783,16 +790,18 @@ async function requireAdminForOrders(
     .maybeSingle();
 
   if (!profile || !profile.is_active) {
-    return "this account is not active";
+    return { denied: "this account is not active" };
   }
 
   if (profile.role !== "admin") {
     // says who can, not just that you cannot. the cashier's next move is to
     // fetch the manager, and the message should tell them that.
-    return `only an admin can ${action}. ask the manager to sign in.`;
+    return {
+      denied: `only an admin can ${action}. ask the manager to sign in.`,
+    };
   }
 
-  return null;
+  return { denied: null, adminId: user.id };
 }
 
 // admin void from order history, including a completed sale discovered late.
@@ -804,7 +813,7 @@ export async function cancelOrder(orderId: string): Promise<CancelOrderResult> {
 
   const supabase = await createClient();
 
-  const denied = await requireAdminForOrders(supabase, "cancel an order");
+  const { denied } = await requireAdminForOrders(supabase, "cancel an order");
   if (denied) return { ok: false, message: denied };
 
   const { data: order, error: readError } = await supabase
@@ -844,6 +853,85 @@ export async function cancelOrder(orderId: string): Promise<CancelOrderResult> {
       ticket,
       warning:
         "order cancelled, but stock return failed. check admin inventory.",
+    };
+  }
+
+  return { ok: true, ticket };
+}
+
+export type HideOrderResult =
+  | { ok: true; ticket: string }
+  | { ok: false; message: string };
+
+// taking a cancelled ticket off the order history, and putting it back.
+//
+// this is not a delete and must never become one. the sale stays in the table:
+// out of the takings because it is cancelled, still in the cancelled count on
+// the admin report, still answering "what happened to ticket 8" months later.
+// what changes is one list on one screen.
+//
+// admin only, for the same reason cancelling is. a cashier who can cancel a
+// sale and then make the cancellation disappear has been handed the whole
+// skim in two taps.
+export async function setOrderHidden(
+  orderId: string,
+  hidden: boolean,
+): Promise<HideOrderResult> {
+  if (!isValidOrderId(orderId)) {
+    return { ok: false, message: "that ticket has an invalid id" };
+  }
+
+  const supabase = await createClient();
+
+  const check = await requireAdminForOrders(
+    supabase,
+    hidden ? "hide an order" : "restore an order",
+  );
+  // `!== null` and not a truthiness check: an empty string is falsy, so only
+  // the explicit compare narrows the union down to the branch carrying the id
+  if (check.denied !== null) return { ok: false, message: check.denied };
+
+  const { data: order, error: readError } = await supabase
+    .from("orders")
+    .select("id, status, ticket_number")
+    .eq("id", orderId)
+    .maybeSingle();
+
+  if (readError || !order) {
+    return { ok: false, message: "could not find that order" };
+  }
+
+  const ticket = ticketNumber(order);
+
+  // the database refuses this too. saying it here is what turns a constraint
+  // violation into a sentence the person at the till can act on.
+  if (hidden && order.status !== "cancelled") {
+    return {
+      ok: false,
+      message: `#${ticket} is still a live sale. cancel it first, then hide it.`,
+    };
+  }
+
+  const { data: updated, error: updateError } = await supabase
+    .from("orders")
+    .update(
+      hidden
+        ? { hidden_at: new Date().toISOString(), hidden_by: check.adminId }
+        : { hidden_at: null, hidden_by: null },
+    )
+    .eq("id", orderId)
+    .select("id")
+    .maybeSingle();
+
+  // the error is passed through rather than flattened into "try again".
+  // until the migration is run there is no hidden_at column, and postgres says
+  // so exactly - swallowing that would turn a five minute fix into an evening
+  // of pressing a button that quietly does nothing.
+  if (updateError || !updated) {
+    return {
+      ok: false,
+      message:
+        updateError?.message ?? "the order changed. refresh and try again.",
     };
   }
 
