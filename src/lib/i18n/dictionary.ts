@@ -234,10 +234,20 @@ const en = {
   "admin.nav.settings": "Settings",
 
   "admin.menu.tabProducts": "Products",
+  "admin.menu.tabCategories": "Categories",
   "admin.menu.tabExtras": "Extras",
   "admin.menu.addProduct": "Add product",
   "admin.menu.addProductHint":
     "Pick a category. For boxes, also set the pack size and what it contains.",
+  "admin.menu.addCategory": "Add category",
+  "admin.menu.addCategoryHint":
+    "Creates a new till tab. Existing products stay where they are until you move them under Products.",
+  "admin.menu.createCategory": "Create category",
+  "admin.menu.creatingCategory": "Creating...",
+  "admin.menu.categoryColor": "Colour",
+  "admin.menu.categoryCount": "{count} categories",
+  "admin.menu.categoryProductCount": "{count} products in this category",
+  "admin.menu.noCategories": "No categories yet.",
   "admin.menu.name": "Name",
   "admin.menu.category": "Category",
   "admin.menu.price": "Price",
@@ -514,10 +524,20 @@ const ar: Record<TranslationKey, string> = {
   "admin.nav.settings": "الإعدادات",
 
   "admin.menu.tabProducts": "الأصناف",
+  "admin.menu.tabCategories": "الأقسام",
   "admin.menu.tabExtras": "الإضافات",
   "admin.menu.addProduct": "إضافة صنف",
   "admin.menu.addProductHint":
     "اختر القسم. للصناديق حدد عدد القطع وما بداخلها.",
+  "admin.menu.addCategory": "إضافة قسم",
+  "admin.menu.addCategoryHint":
+    "بيعمل تاب جديد على الكاشير. الأصناف الحالية بتفضل مكانها لحد ما تنقلها من تبويب الأصناف.",
+  "admin.menu.createCategory": "إنشاء القسم",
+  "admin.menu.creatingCategory": "جاري الإنشاء...",
+  "admin.menu.categoryColor": "اللون",
+  "admin.menu.categoryCount": "{count} أقسام",
+  "admin.menu.categoryProductCount": "{count} أصناف في القسم ده",
+  "admin.menu.noCategories": "مفيش أقسام لسه.",
   "admin.menu.name": "الاسم",
   "admin.menu.category": "القسم",
   "admin.menu.price": "السعر",

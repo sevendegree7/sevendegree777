@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import { AdminShell } from "@/components/admin-shell";
 import { createClient } from "@/lib/supabase/server";
 
+import { CategoryManager } from "./category-manager";
 import { ExtrasManager } from "./extras-manager";
 import { MenuTabs, ProductManager } from "./product-manager";
 
@@ -12,7 +13,12 @@ export default async function AdminMenuPage({
   searchParams: Promise<{ tab?: string }>;
 }) {
   const params = await searchParams;
-  const tab = params.tab === "extras" ? "extras" : "products";
+  const tab =
+    params.tab === "extras"
+      ? "extras"
+      : params.tab === "categories"
+        ? "categories"
+        : "products";
   const supabase = await createClient();
 
   const [productsResult, categoriesResult, extrasResult, stockResult] =
@@ -36,6 +42,11 @@ export default async function AdminMenuPage({
         <p className="text-danger">{loadError.message}</p>
       ) : tab === "extras" ? (
         <ExtrasManager extras={extrasResult.data ?? []} />
+      ) : tab === "categories" ? (
+        <CategoryManager
+          categories={categoriesResult.data ?? []}
+          products={productsResult.data ?? []}
+        />
       ) : (
         <ProductManager
           products={productsResult.data ?? []}

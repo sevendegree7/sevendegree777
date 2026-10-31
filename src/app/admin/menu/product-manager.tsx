@@ -490,28 +490,29 @@ function ProductRow({
 export function MenuTabs() {
   const { t } = useTranslate();
   const searchParams = useSearchParams();
-  const tab = searchParams.get("tab") === "extras" ? "extras" : "products";
+  const raw = searchParams.get("tab");
+  const tab =
+    raw === "extras" ? "extras" : raw === "categories" ? "categories" : "products";
+
+  const tabClass = (active: boolean) =>
+    `shrink-0 rounded-xl px-4 py-2.5 text-sm font-medium ${
+      active
+        ? "bg-navy text-cream dark:bg-accent-surface dark:text-accent-ink"
+        : "border border-line bg-raised text-muted"
+    }`;
 
   return (
     <div className="sticky top-0 z-10 -mx-4 mb-6 flex gap-2 overflow-x-auto border-b border-line bg-surface px-4 py-3 sm:-mx-6 sm:px-6">
-      <Link
-        href="/admin/menu?tab=products"
-        className={`shrink-0 rounded-xl px-4 py-2.5 text-sm font-medium ${
-          tab === "products"
-            ? "bg-navy text-cream dark:bg-accent-surface dark:text-accent-ink"
-            : "border border-line bg-raised text-muted"
-        }`}
-      >
+      <Link href="/admin/menu?tab=products" className={tabClass(tab === "products")}>
         {t("admin.menu.tabProducts")}
       </Link>
       <Link
-        href="/admin/menu?tab=extras"
-        className={`shrink-0 rounded-xl px-4 py-2.5 text-sm font-medium ${
-          tab === "extras"
-            ? "bg-navy text-cream dark:bg-accent-surface dark:text-accent-ink"
-            : "border border-line bg-raised text-muted"
-        }`}
+        href="/admin/menu?tab=categories"
+        className={tabClass(tab === "categories")}
       >
+        {t("admin.menu.tabCategories")}
+      </Link>
+      <Link href="/admin/menu?tab=extras" className={tabClass(tab === "extras")}>
         {t("admin.menu.tabExtras")}
       </Link>
     </div>

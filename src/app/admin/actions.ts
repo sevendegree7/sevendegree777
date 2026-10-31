@@ -245,6 +245,131 @@ export async function archiveProduct(input: {
   };
 }
 
+// categories are never deleted. new ones are inserted; old ones are renamed or
+// retired with is_active. products keep their rows - reassigning only changes
+// category_id on the product.
+export async function createCategory(input: {
+  name: string;
+  color?: string;
+}): Promise<ActionResult> {
+  const { supabase, error } = await requireAdmin();
+  if (error) return { ok: false, message: error };
+
+  const name = input.name.trim();
+  if (!name) return { ok: false, message: "enter a category name" };
+
+  const color = (input.color ?? "").trim() || null;
+
+  const { data: existing, error: lookupError } = await supabase
+    .from("categories")
+    .select("id, name");
+
+  if (lookupError) return { ok: false, message: lookupError.message };
+
+  if (
+    (existing ?? []).some(
+      (category) => category.name.trim().toLowerCase() === name.toLowerCase(),
+    )
+  ) {
+    return { ok: false, message: "a category with this name already exists" };
+  }
+
+  const { data: last } = await supabase
+    .from("categories")
+    .select("sort_order")
+    .order("sort_order", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const sortOrder = (last?.sort_order ?? 0) + 1;
+
+  const { error: insertError } = await supabase.from("categories").insert({
+    name,
+    color,
+    sort_order: sortOrder,
+    is_active: true,
+  });
+
+  if (insertError) return { ok: false, message: insertError.message };
+
+  revalidatePath("/admin/menu");
+  revalidatePath("/pos");
+  revalidatePath("/menu");
+  return { ok: true, message: "category created" };
+}
+
+export async function updateCategory(input: {
+  categoryId: string;
+  name: string;
+  color?: string;
+}): Promise<ActionResult> {
+  const { supabase, error } = await requireAdmin();
+  if (error) return { ok: false, message: error };
+
+  const name = input.name.trim();
+  if (!name) return { ok: false, message: "enter a category name" };
+  if (!input.categoryId) {
+    return { ok: false, message: "category not found" };
+  }
+
+  const color = (input.color ?? "").trim() || null;
+
+  const { data: existing, error: lookupError } = await supabase
+    .from("categories")
+    .select("id, name");
+
+  if (lookupError) return { ok: false, message: lookupError.message };
+
+  if (
+    (existing ?? []).some(
+      (category) =>
+        category.id !== input.categoryId &&
+        category.name.trim().toLowerCase() === name.toLowerCase(),
+    )
+  ) {
+    return { ok: false, message: "a category with this name already exists" };
+  }
+
+  const { error: updateError } = await supabase
+    .from("categories")
+    .update({ name, color })
+    .eq("id", input.categoryId);
+
+  if (updateError) return { ok: false, message: updateError.message };
+
+  revalidatePath("/admin/menu");
+  revalidatePath("/pos");
+  revalidatePath("/menu");
+  return { ok: true, message: "category saved" };
+}
+
+export async function setCategoryActive(input: {
+  categoryId: string;
+  active: boolean;
+}): Promise<ActionResult> {
+  const { supabase, error } = await requireAdmin();
+  if (error) return { ok: false, message: error };
+
+  if (!input.categoryId) {
+    return { ok: false, message: "category not found" };
+  }
+
+  const { error: updateError } = await supabase
+    .from("categories")
+    .update({ is_active: input.active })
+    .eq("id", input.categoryId);
+
+  if (updateError) return { ok: false, message: updateError.message };
+
+  revalidatePath("/admin/menu");
+  revalidatePath("/pos");
+  revalidatePath("/menu");
+  return {
+    ok: true,
+    message: input.active ? "category restored" : "category archived",
+  };
+}
+
 // one reusable extra, offered on every product while active.
 //
 // product_id stays null. old product-owned rows remain supported by checkout,
