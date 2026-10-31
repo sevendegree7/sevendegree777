@@ -138,6 +138,15 @@ const en = {
   "history.notUploaded": "This sale has not been uploaded yet",
   "history.adminOnly":
     "Only an admin can cancel or edit a sale. Ask the manager to sign in.",
+  "history.hide": "Remove from list",
+  "history.confirmHide":
+    "Take ticket #{ticket} off this list? The sale is kept and stays on the admin report — only the list stops showing it.",
+  "history.hidden": "Ticket #{ticket} is off the list",
+  "history.restore": "Put back",
+  "history.restored": "Ticket #{ticket} is back on the list",
+  "history.hiddenBadge": "Off the list",
+  "history.showHidden": "Show removed ({count})",
+  "history.hideHidden": "Hide them again",
 
   "receipt.ticket": "Ticket",
   "receipt.order": "Order",
@@ -430,6 +439,15 @@ const ar: Record<TranslationKey, string> = {
   "history.notUploaded": "لم تُرفع هذه العملية بعد",
   "history.adminOnly":
     "الإلغاء والتعديل للأدمن فقط. كلّم المدير يسجّل دخول.",
+  "history.hide": "شيلها من القايمة",
+  "history.confirmHide":
+    "تشيل التذكرة رقم {ticket} من القايمة؟ العملية محفوظة وهتفضل في تقرير الأدمن — القايمة بس هي اللي مش هتوريها.",
+  "history.hidden": "التذكرة رقم {ticket} اتشالت من القايمة",
+  "history.restore": "رجّعها",
+  "history.restored": "التذكرة رقم {ticket} رجعت للقايمة",
+  "history.hiddenBadge": "مشالة من القايمة",
+  "history.showHidden": "إظهار المشال ({count})",
+  "history.hideHidden": "إخفاؤها تاني",
 
   "receipt.ticket": "التذكرة",
   "receipt.order": "طلب",
