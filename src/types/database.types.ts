@@ -149,6 +149,8 @@ export type Order = {
   // visible number resets every Egypt business day
   ticket_date?: string;
   ticket_number?: number;
+  // set when admin archives a sale (clear-all). null = still live.
+  archived_at?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -372,6 +374,7 @@ export type Database = {
           stock_deducted?: boolean;
           ticket_date?: string;
           ticket_number?: number;
+          archived_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -405,6 +408,7 @@ export type Database = {
           stock_deducted?: boolean;
           ticket_date?: string;
           ticket_number?: number;
+          archived_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };

@@ -77,6 +77,7 @@ export async function fetchKitchenOrders(
   const { data, error } = await supabase
     .from("orders")
     .select("*")
+    .is("archived_at", null)
     .in("status", [...KITCHEN_STATUSES])
     .order("created_at", { ascending: true });
 
@@ -117,6 +118,7 @@ export async function fetchRecentOrders(
   const { data, error } = await supabase
     .from("orders")
     .select("*")
+    .is("archived_at", null)
     .gte("created_at", sinceIso)
     .order("created_at", { ascending: false });
 
@@ -161,6 +163,7 @@ export async function fetchAdminOrders(
   let query = supabase
     .from("orders")
     .select("*")
+    .is("archived_at", null)
     .gte("created_at", options.sinceIso)
     .order("created_at", { ascending: false });
 

@@ -16,6 +16,7 @@ export default async function AdminDebtsPage() {
       "id, total_amount, customer_name, customer_phone, created_at, created_by_name, ticket_date, ticket_number, notes",
     )
     .eq("payment_method", "agel")
+    .is("archived_at", null)
     .is("agel_settled_at", null)
     .neq("status", "cancelled")
     .order("created_at", { ascending: true });

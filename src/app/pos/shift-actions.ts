@@ -57,7 +57,8 @@ async function summarise(
   const { data: orders } = await supabase
     .from("orders")
     .select("total_amount, payment_method, status, created_by_name")
-    .eq("shift_id", shift.id);
+    .eq("shift_id", shift.id)
+    .is("archived_at", null);
 
   return {
     shift,

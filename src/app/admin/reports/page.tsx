@@ -59,6 +59,7 @@ export default async function AdminReportsPage({
     .select(
       "id, total_amount, tax_amount, discount_amount, is_diyafa, payment_method, order_type, status, created_at, created_by, created_by_name",
     )
+    .is("archived_at", null)
     .gte("created_at", since)
     .neq("status", "cancelled")
     .order("created_at", { ascending: false });
@@ -66,6 +67,7 @@ export default async function AdminReportsPage({
   let cancelledQuery = supabase
     .from("orders")
     .select("id", { count: "exact", head: true })
+    .is("archived_at", null)
     .gte("created_at", since)
     .eq("status", "cancelled");
 

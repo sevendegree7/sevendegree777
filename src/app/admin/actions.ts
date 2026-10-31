@@ -917,24 +917,25 @@ export async function cancelAdminOrders(
   };
 }
 
-// wipe every order row. for clearing test data before go-live — restores stock
-// first, then hard-deletes via the service role (rls has no delete policy).
+// archive every live order. for clearing test data — restores stock first,
+// then stamps archived_at so the rows stay in the database for later audit.
 export async function purgeAllOrders(
   confirmation: string,
 ): Promise<ActionResult & { removed?: number }> {
   const { supabase, error } = await requireAdmin();
   if (error) return { ok: false, message: error };
 
-  if (confirmation.trim() !== "DELETE ALL ORDERS") {
+  if (confirmation.trim() !== "ARCHIVE ALL ORDERS") {
     return {
       ok: false,
-      message: 'type DELETE ALL ORDERS exactly to confirm',
+      message: "type ARCHIVE ALL ORDERS exactly to confirm",
     };
   }
 
   const { data: live, error: listError } = await supabase
     .from("orders")
     .select("id")
+    .is("archived_at", null)
     .neq("status", "cancelled");
 
   if (listError) {
@@ -966,29 +967,31 @@ export async function purgeAllOrders(
     };
   }
 
-  const { count, error: countError } = await admin
+  const archivedAt = new Date().toISOString();
+
+  const { data: toArchive, error: countError } = await admin
     .from("orders")
-    .select("id", { count: "exact", head: true });
+    .select("id")
+    .is("archived_at", null);
 
   if (countError) {
     return { ok: false, message: countError.message };
   }
 
-  const removed = count ?? 0;
+  const removed = toArchive?.length ?? 0;
 
-  const { error: deleteError } = await admin
-    .from("orders")
-    .delete()
-    .neq("id", "00000000-0000-0000-0000-000000000000");
+  if (removed > 0) {
+    const { error: archiveError } = await admin
+      .from("orders")
+      .update({ archived_at: archivedAt, updated_at: archivedAt })
+      .is("archived_at", null);
 
-  if (deleteError) {
-    return { ok: false, message: deleteError.message };
+    if (archiveError) {
+      return { ok: false, message: archiveError.message };
+    }
   }
 
-  await admin
-    .from("daily_ticket_counters")
-    .delete()
-    .gte("next_number", 0);
+  await admin.from("daily_ticket_counters").delete().gte("next_number", 0);
 
   revalidatePath("/admin/orders");
   revalidatePath("/admin/reports");
@@ -999,7 +1002,7 @@ export async function purgeAllOrders(
   return {
     ok: true,
     removed,
-    message: `removed ${removed} order${removed === 1 ? "" : "s"}. ticket numbers start again from 1 today.`,
+    message: `archived ${removed} order${removed === 1 ? "" : "s"} (kept in the database). ticket numbers start again from 1 today.`,
   };
 }
 

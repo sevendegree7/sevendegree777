@@ -217,17 +217,17 @@ export function OrdersPanel({ orders }: OrdersPanelProps) {
 
       <section className="rounded-2xl border border-danger/40 bg-danger/5 p-5">
         <h2 className="font-display text-lg font-semibold text-danger">
-          Clear all orders (test data)
+          Archive all orders
         </h2>
         <p className="mt-2 max-w-2xl text-sm text-muted">
-          Removes every order from the database after putting stock back. Use
-          once before go-live to wipe practice sales. Ticket numbers reset for
-          today. This cannot be undone.
+          Hides every order from the till and reports after putting stock back.
+          The rows stay in the database. Ticket numbers reset for today.
         </p>
         <div className="mt-4 flex max-w-xl flex-col gap-3 sm:flex-row sm:items-end">
           <label className="flex flex-1 flex-col gap-1 text-sm">
             <span className="text-muted">
-              Type <span className="font-mono text-ink">DELETE ALL ORDERS</span>
+              Type{" "}
+              <span className="font-mono text-ink">ARCHIVE ALL ORDERS</span>
             </span>
             <input
               type="text"
@@ -240,11 +240,11 @@ export function OrdersPanel({ orders }: OrdersPanelProps) {
           </label>
           <button
             type="button"
-            disabled={pending || purgeText.trim() !== "DELETE ALL ORDERS"}
+            disabled={pending || purgeText.trim() !== "ARCHIVE ALL ORDERS"}
             onClick={() => {
               if (
                 !window.confirm(
-                  "Delete every order permanently? Stock is restored first, but the sales history is gone forever.",
+                  "Archive every order? Stock is restored first. Sales leave the live lists but stay in the database.",
                 )
               ) {
                 return;
@@ -252,7 +252,7 @@ export function OrdersPanel({ orders }: OrdersPanelProps) {
               startTransition(async () => {
                 const result = await purgeAllOrders(purgeText);
                 setMessage(
-                  result.ok ? (result.message ?? "cleared") : result.message,
+                  result.ok ? (result.message ?? "archived") : result.message,
                 );
                 if (result.ok) {
                   setPurgeText("");
@@ -262,7 +262,7 @@ export function OrdersPanel({ orders }: OrdersPanelProps) {
             }}
             className="rounded-xl bg-danger px-4 py-2.5 text-sm font-medium text-white disabled:opacity-40"
           >
-            Delete all orders
+            Archive all orders
           </button>
         </div>
       </section>

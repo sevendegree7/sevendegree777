@@ -21,6 +21,7 @@ export default async function AdminPage() {
     supabase
       .from("orders")
       .select("id, total_amount, payment_method, status, created_at")
+      .is("archived_at", null)
       .gte("created_at", since)
       .neq("status", "cancelled"),
     supabase

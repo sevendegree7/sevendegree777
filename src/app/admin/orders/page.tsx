@@ -78,6 +78,7 @@ export default async function AdminOrdersPage({
         let query = supabase
           .from("orders")
           .select("id", { count: "exact", head: true })
+          .is("archived_at", null)
           .gte("created_at", since);
         if (range?.until) query = query.lt("created_at", range.until);
         if (selectedStatus) query = query.eq("status", selectedStatus);
