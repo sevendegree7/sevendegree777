@@ -138,15 +138,6 @@ const en = {
   "history.notUploaded": "This sale has not been uploaded yet",
   "history.adminOnly":
     "Only an admin can cancel or edit a sale. Ask the manager to sign in.",
-  "history.hide": "Remove from list",
-  "history.confirmHide":
-    "Take ticket #{ticket} off this list? The sale is kept and stays on the admin report — only the list stops showing it.",
-  "history.hidden": "Ticket #{ticket} is off the list",
-  "history.restore": "Put back",
-  "history.restored": "Ticket #{ticket} is back on the list",
-  "history.hiddenBadge": "Off the list",
-  "history.showHidden": "Show removed ({count})",
-  "history.hideHidden": "Hide them again",
 
   "receipt.ticket": "Ticket",
   "receipt.order": "Order",
@@ -215,9 +206,9 @@ const en = {
   "shift.cancel": "Cancel",
   "shift.liveHint": "Running total for this drawer",
   "shift.today": "Today",
+  "shift.salesLabel": "This shift",
   "shift.todaySales": "{count} sales · {total}",
-  "shift.onShift": "Shift: {name}",
-
+  "shift.onShift": "Opened by {name}",
   "status.pending": "Pending",
   "status.preparing": "Preparing",
   "status.ready": "Ready",
@@ -423,15 +414,6 @@ const ar: Record<TranslationKey, string> = {
   "history.notUploaded": "لم تُرفع هذه العملية بعد",
   "history.adminOnly":
     "الإلغاء والتعديل للأدمن فقط. كلّم المدير يسجّل دخول.",
-  "history.hide": "شيلها من القايمة",
-  "history.confirmHide":
-    "تشيل التذكرة رقم {ticket} من القايمة؟ العملية محفوظة وهتفضل في تقرير الأدمن — القايمة بس هي اللي مش هتوريها.",
-  "history.hidden": "التذكرة رقم {ticket} اتشالت من القايمة",
-  "history.restore": "رجّعها",
-  "history.restored": "التذكرة رقم {ticket} رجعت للقايمة",
-  "history.hiddenBadge": "مشالة من القايمة",
-  "history.showHidden": "إظهار المشال ({count})",
-  "history.hideHidden": "إخفاؤها تاني",
 
   "receipt.ticket": "التذكرة",
   "receipt.order": "طلب",
@@ -498,9 +480,9 @@ const ar: Record<TranslationKey, string> = {
   "shift.cancel": "إلغاء",
   "shift.liveHint": "إجمالي الدرج لحد دلوقتي",
   "shift.today": "النهارده",
+  "shift.salesLabel": "الشيفت ده",
   "shift.todaySales": "{count} أوردر · {total}",
-  "shift.onShift": "الشيفت: {name}",
-
+  "shift.onShift": "فتحه {name}",
   "status.pending": "في الانتظار",
   "status.preparing": "قيد التحضير",
   "status.ready": "جاهز",

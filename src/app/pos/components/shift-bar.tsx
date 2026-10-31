@@ -7,12 +7,11 @@ import { useTranslate } from "@/lib/i18n/use-language";
 import { formatMoney } from "@/lib/pos/money";
 import type { ShiftReport } from "@/lib/pos/shift-report";
 import {
+  EMPTY_TODAY_SALES,
   mergeTodaySales,
-  salesOnTruckDay,
   summariseTodaySales,
   type TodaySales,
 } from "@/lib/pos/today-sales";
-import { startOfTruckDayIso } from "@/lib/reports/dates";
 import type { Shift } from "@/types/database.types";
 
 import { closeShift, openShift } from "../shift-actions";
@@ -30,9 +29,8 @@ type ShiftBarProps = {
 
 // the drawer, on one line above the menu.
 //
-// today's sales are the number the cashier reads. the old "since 3:56" line
-// was the shift-open time, not takings. open/close still live here, and a
-// forgotten open still gets created on the first sale.
+// sales follow the open shift, not the calendar day. close shift ends the
+// count and prints the report; the next open starts from zero.
 export function ShiftBar({
   shift,
   report,
@@ -42,19 +40,20 @@ export function ShiftBar({
 }: ShiftBarProps) {
   const { t } = useTranslate();
   const localOrders = useLocalOrders();
-  const todaySales = useMemo(() => {
+  const shiftSales = useMemo(() => {
+    const base = shift
+      ? today
+      : EMPTY_TODAY_SALES;
+    // unsynced offline tickets are part of this drawer until they upload
     const waiting = summariseTodaySales(
-      salesOnTruckDay(
-        localOrders.map((order) => ({
-          total_amount: Number(order.total_amount),
-          status: order.status,
-          created_at: order.created_at,
-        })),
-        startOfTruckDayIso(),
-      ),
+      localOrders.map((order) => ({
+        total_amount: Number(order.total_amount),
+        status: order.status,
+        created_at: order.created_at,
+      })),
     );
-    return mergeTodaySales(today, waiting);
-  }, [today, localOrders]);
+    return mergeTodaySales(base, waiting);
+  }, [shift, today, localOrders]);
   const [dialog, setDialog] = useState<"open" | "close" | null>(null);
   const [amount, setAmount] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -105,11 +104,11 @@ export function ShiftBar({
     <>
       {shift ? (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-line bg-raised px-4 py-2 text-sm">
-          <span className="font-medium">{t("shift.today")}</span>
+          <span className="font-medium">{t("shift.salesLabel")}</span>
           <span>
             {t("shift.todaySales", {
-              count: todaySales.orderCount,
-              total: formatMoney(todaySales.salesTotal),
+              count: shiftSales.orderCount,
+              total: formatMoney(shiftSales.salesTotal),
             })}
           </span>
           <span className="text-muted">
@@ -123,21 +122,15 @@ export function ShiftBar({
               setError(null);
             }}
             disabled={offline}
-            className="ms-auto rounded-full border border-line px-3 py-1 disabled:opacity-40"
+            className="ms-auto rounded-full border border-line bg-navy px-3 py-1.5 font-medium text-cream disabled:opacity-40 dark:bg-accent-surface dark:text-accent-ink"
           >
             {t("shift.close")}
           </button>
         </div>
       ) : (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl bg-warn/15 px-4 py-2 text-sm">
-          <span className="font-medium text-ink">{t("shift.today")}</span>
-          <span className="text-ink">
-            {t("shift.todaySales", {
-              count: todaySales.orderCount,
-              total: formatMoney(todaySales.salesTotal),
-            })}
-          </span>
-          <span className="text-warn">{t("shift.none")}</span>
+          <span className="font-medium text-warn">{t("shift.none")}</span>
+          <span className="text-muted">{t("shift.noneHint")}</span>
           <button
             type="button"
             onClick={() => {
@@ -146,7 +139,7 @@ export function ShiftBar({
               setError(null);
             }}
             disabled={offline}
-            className="ms-auto rounded-full border border-warn px-3 py-1 text-warn disabled:opacity-40"
+            className="ms-auto rounded-full border border-warn px-3 py-1.5 font-medium text-warn disabled:opacity-40"
           >
             {t("shift.open")}
           </button>

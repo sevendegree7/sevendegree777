@@ -1,9 +1,9 @@
 import { toPiastres, toPounds } from "./money";
 
-// the till's live tickets since midnight on the truck clock.
+// helpers for the till's running sales total.
 //
-// one tablet, so this is today's takings, not "who opened the shift". who
-// rang each sale lives on the order as created_by_name, same as admin.
+// the number on the bar is the open shift, not the calendar day. closing the
+// shift ends it; who rang each sale lives on created_by_name.
 
 export type TodaySale = {
   total_amount: number;

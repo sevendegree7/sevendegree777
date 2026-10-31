@@ -730,6 +730,14 @@ export function PosScreen({
           onChanged={(next) => {
             setShift(next.shift);
             setShiftReport(next.report);
+            setSalesToday(
+              next.report
+                ? {
+                    orderCount: next.report.orderCount,
+                    salesTotal: next.report.salesTotal,
+                  }
+                : { orderCount: 0, salesTotal: 0 },
+            );
           }}
         />
 
