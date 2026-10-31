@@ -55,14 +55,85 @@ async function summarise(
 ): Promise<ShiftSummary> {
   const { data: orders } = await supabase
     .from("orders")
-    .select("total_amount, payment_method, status, created_by_name")
+    .select(
+      "id, total_amount, payment_method, status, created_by_name, is_diyafa",
+    )
     .eq("shift_id", shift.id)
     .is("archived_at", null);
+
+  const list = orders ?? [];
+  const orderIds = list.map((order) => order.id);
+
+  const { data: itemRows } =
+    orderIds.length > 0
+      ? await supabase
+          .from("order_items")
+          .select("order_id, quantity, unit_price, product_id")
+          .in("order_id", orderIds)
+      : { data: [] };
+
+  const productIds = [
+    ...new Set(
+      (itemRows ?? [])
+        .map((row) => row.product_id)
+        .filter((id): id is string => typeof id === "string" && id.length > 0),
+    ),
+  ];
+
+  const { data: products } =
+    productIds.length > 0
+      ? await supabase
+          .from("products")
+          .select("id, category_id")
+          .in("id", productIds)
+      : { data: [] };
+
+  const categoryIds = [
+    ...new Set(
+      (products ?? [])
+        .map((product) => product.category_id)
+        .filter((id): id is string => typeof id === "string" && id.length > 0),
+    ),
+  ];
+
+  const { data: categories } =
+    categoryIds.length > 0
+      ? await supabase
+          .from("categories")
+          .select("id, name, sort_order")
+          .in("id", categoryIds)
+      : { data: [] };
+
+  const categoryByProduct = new Map(
+    (products ?? []).map((product) => [product.id, product.category_id]),
+  );
+  const categoryById = new Map(
+    (categories ?? []).map((category) => [
+      category.id,
+      { name: category.name, sort: category.sort_order },
+    ]),
+  );
+
+  const lines = (itemRows ?? []).map((row) => {
+    const categoryId = row.product_id
+      ? (categoryByProduct.get(row.product_id) ?? null)
+      : null;
+    const category = categoryId ? categoryById.get(categoryId) : undefined;
+    return {
+      order_id: row.order_id,
+      quantity: Number(row.quantity),
+      unit_price: Number(row.unit_price),
+      category_id: categoryId,
+      category_name: category?.name ?? null,
+      category_sort: category?.sort ?? null,
+    };
+  });
 
   return {
     shift,
     report: buildShiftReport({
-      orders: orders ?? [],
+      orders: list,
+      lines,
       openingFloat: Number(shift.opening_float),
       countedCash: shift.counted_cash === null ? null : Number(shift.counted_cash),
     }),

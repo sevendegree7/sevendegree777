@@ -8,9 +8,12 @@ import {
   rawbtIntentUrl,
   receiptEscPos,
   rawBtAvailable,
+  shiftReportEscPos,
   toBase64,
 } from "./rawbt";
 import type { Receipt } from "./receipt";
+import type { ShiftReport } from "./shift-report";
+import type { Shift } from "@/types/database.types";
 
 const receipt: Receipt = {
   ticket: "13",
@@ -80,5 +83,59 @@ describe("RawBT encoding", () => {
 
   it("does not claim RawBT support outside Android", () => {
     expect(rawBtAvailable()).toBe(false);
+  });
+});
+
+describe("daily sales ESC/POS", () => {
+  it("prints net sales, categories and cash/visa then cuts once", () => {
+    const shift = {
+      id: "s1",
+      opened_by: null,
+      opened_by_name: "Mona",
+      opened_at: "2026-10-31T07:00:00.000Z",
+      closed_by: null,
+      closed_by_name: "Mona",
+      closed_at: "2026-10-31T22:00:00.000Z",
+      opening_float: 500,
+      counted_cash: 710,
+      notes: null,
+      created_at: "2026-10-31T07:00:00.000Z",
+    } satisfies Shift;
+
+    const report: ShiftReport = {
+      orderCount: 2,
+      averageTicket: 205,
+      cancelledCount: 1,
+      cancelledAmount: 50,
+      salesTotal: 410,
+      byPayment: [
+        { key: "card", label: "Visa", amount: 200, count: 1 },
+        { key: "cash", label: "Cash", amount: 210, count: 1 },
+      ],
+      byCategory: [
+        { key: "d", label: "Desserts", amount: 300, count: 2 },
+        { key: "b", label: "Beverages", amount: 110, count: 1 },
+      ],
+      byCashier: [{ name: "Mona", amount: 410, count: 2 }],
+      cashSales: 210,
+      openingFloat: 500,
+      expectedCash: 710,
+      countedCash: 710,
+      variance: 0,
+    };
+
+    const text = new TextDecoder().decode(shiftReportEscPos(shift, report));
+    expect(text).toContain("DAILY SALES");
+    expect(text).toContain("Net sales");
+    expect(text).toContain("Desserts");
+    expect(text).toContain("Visa");
+    expect(text).toContain("Cancel");
+
+    const output = Array.from(shiftReportEscPos(shift, report));
+    let cuts = 0;
+    for (let index = 0; index < output.length - 2; index += 1) {
+      if (output[index] === 0x1d && output[index + 1] === 0x56) cuts += 1;
+    }
+    expect(cuts).toBe(1);
   });
 });

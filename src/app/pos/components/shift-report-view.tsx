@@ -3,6 +3,7 @@
 import { useTranslate } from "@/lib/i18n/use-language";
 import { formatMoney } from "@/lib/pos/money";
 import { applyReceiptPageSize } from "@/lib/pos/print-page";
+import { printShiftReportToRawBt } from "@/lib/pos/rawbt";
 import { formatTruckTime } from "@/lib/pos/receipt";
 import type { ShiftReport } from "@/lib/pos/shift-report";
 import type { Shift } from "@/types/database.types";
@@ -13,7 +14,7 @@ type ShiftReportViewProps = {
   onClose: () => void;
 };
 
-// the paper that comes off the till at handover.
+// the paper that comes off the till at handover / end of day.
 //
 // it carries the receipt-paper class, so it prints on the same roll and at the
 // same measured page size as a receipt - one print path, not two. only one copy
@@ -29,6 +30,12 @@ export function ShiftReportView({
   const short = report.variance !== null && report.variance < 0;
   const over = report.variance !== null && report.variance > 0;
 
+  function print() {
+    if (printShiftReportToRawBt(shift, report)) return;
+    applyReceiptPageSize(document);
+    window.print();
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-navy/60 p-4 print:static print:block print:overflow-visible print:bg-transparent print:p-0">
       <div className="my-auto w-full max-w-sm print:my-0 print:max-w-none">
@@ -38,7 +45,7 @@ export function ShiftReportView({
               SEVEN | DEGREES
             </p>
             <p className="mt-1 text-xs uppercase tracking-[0.3em]">
-              {t("shift.report")}
+              {t("shift.dailyReport")}
             </p>
           </div>
 
@@ -53,28 +60,60 @@ export function ShiftReportView({
           </div>
 
           <div className="mt-3 space-y-1">
-            <Row label={t("shift.orders")} value={String(report.orderCount)} />
-            {report.cancelledCount > 0 ? (
-              <Row
-                label={t("shift.cancelled")}
-                value={String(report.cancelledCount)}
-              />
-            ) : null}
             <Row
-              label={t("shift.sales")}
+              label={t("shift.netSales")}
               value={formatMoney(report.salesTotal)}
+            />
+            <Row
+              label={t("shift.transactions")}
+              value={String(report.orderCount)}
+            />
+            <Row
+              label={t("shift.avgTicket")}
+              value={formatMoney(report.averageTicket)}
             />
           </div>
 
-          {report.byPayment.length > 0 ? (
+          {report.cancelledCount > 0 ? (
             <div className="mt-3 space-y-1 border-t border-dashed border-neutral-400 pt-3">
-              {report.byPayment.map((row) => (
-                <Row
-                  key={row.key}
-                  label={`${row.label} (${row.count})`}
-                  value={formatMoney(row.amount)}
-                />
-              ))}
+              <Row
+                label={`${t("shift.cancelled")} (${report.cancelledCount})`}
+                value={formatMoney(report.cancelledAmount)}
+              />
+            </div>
+          ) : null}
+
+          {report.byCategory.length > 0 ? (
+            <div className="mt-3 border-t border-dashed border-neutral-400 pt-3">
+              <p className="mb-1 text-xs uppercase tracking-wide">
+                {t("shift.byCategory")}
+              </p>
+              <div className="space-y-1">
+                {report.byCategory.map((row) => (
+                  <Row
+                    key={row.key}
+                    label={row.label}
+                    value={formatMoney(row.amount)}
+                  />
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {report.byPayment.length > 0 ? (
+            <div className="mt-3 border-t border-dashed border-neutral-400 pt-3">
+              <p className="mb-1 text-xs uppercase tracking-wide">
+                {t("shift.revenue")}
+              </p>
+              <div className="space-y-1">
+                {report.byPayment.map((row) => (
+                  <Row
+                    key={row.key}
+                    label={`${row.label} (${row.count})`}
+                    value={formatMoney(row.amount)}
+                  />
+                ))}
+              </div>
             </div>
           ) : null}
 
@@ -163,10 +202,7 @@ export function ShiftReportView({
           </button>
           <button
             type="button"
-            onClick={() => {
-              applyReceiptPageSize(document);
-              window.print();
-            }}
+            onClick={print}
             className="flex-[2] rounded-xl bg-navy px-4 py-3 text-base font-semibold text-cream dark:bg-accent-surface dark:text-accent-ink"
           >
             {t("receipt.print")}

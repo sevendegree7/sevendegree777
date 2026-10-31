@@ -88,8 +88,93 @@ describe("buildShiftReport", () => {
 
     expect(report.orderCount).toBe(1);
     expect(report.cancelledCount).toBe(1);
+    expect(report.cancelledAmount).toBe(190);
     expect(report.salesTotal).toBe(210);
+    expect(report.averageTicket).toBe(210);
     expect(report.expectedCash).toBe(210);
+  });
+
+  it("puts net sales, transaction count and average on the daily sheet", () => {
+    const report = buildShiftReport({
+      orders: [
+        order({ total_amount: 210 }),
+        order({ total_amount: 190 }),
+        order({ total_amount: 200 }),
+      ],
+      openingFloat: 0,
+      countedCash: null,
+    });
+
+    expect(report.salesTotal).toBe(600);
+    expect(report.orderCount).toBe(3);
+    expect(report.averageTicket).toBe(200);
+  });
+
+  it("labels card as Visa under revenue", () => {
+    const report = buildShiftReport({
+      orders: [
+        order({ total_amount: 210, payment_method: "cash" }),
+        order({ total_amount: 400, payment_method: "card" }),
+      ],
+      openingFloat: 0,
+      countedCash: null,
+    });
+
+    expect(report.byPayment).toEqual([
+      { key: "card", label: "Visa", amount: 400, count: 1 },
+      { key: "cash", label: "Cash", amount: 210, count: 1 },
+    ]);
+  });
+
+  it("splits line sales by menu category and skips cancelled and diyafa", () => {
+    const report = buildShiftReport({
+      orders: [
+        order({ id: "a", total_amount: 300 }),
+        order({ id: "b", total_amount: 0, is_diyafa: true }),
+        order({ id: "c", total_amount: 100, status: "cancelled" }),
+      ],
+      lines: [
+        {
+          order_id: "a",
+          quantity: 2,
+          unit_price: 100,
+          category_id: "desserts",
+          category_name: "Desserts",
+          category_sort: 1,
+        },
+        {
+          order_id: "a",
+          quantity: 1,
+          unit_price: 100,
+          category_id: "beverages",
+          category_name: "Beverages",
+          category_sort: 2,
+        },
+        {
+          order_id: "b",
+          quantity: 1,
+          unit_price: 210,
+          category_id: "desserts",
+          category_name: "Desserts",
+          category_sort: 1,
+        },
+        {
+          order_id: "c",
+          quantity: 1,
+          unit_price: 100,
+          category_id: "desserts",
+          category_name: "Desserts",
+          category_sort: 1,
+        },
+      ],
+      openingFloat: 0,
+      countedCash: null,
+    });
+
+    expect(report.byCategory).toEqual([
+      { key: "desserts", label: "Desserts", amount: 200, count: 2 },
+      { key: "beverages", label: "Beverages", amount: 100, count: 1 },
+    ]);
   });
 
   it("splits one drawer between the people who sold from it", () => {
@@ -150,9 +235,11 @@ describe("buildShiftReport", () => {
 
     expect(report.orderCount).toBe(0);
     expect(report.salesTotal).toBe(0);
+    expect(report.averageTicket).toBe(0);
     expect(report.expectedCash).toBe(500);
     expect(report.variance).toBe(0);
     expect(report.byPayment).toEqual([]);
+    expect(report.byCategory).toEqual([]);
     expect(report.byCashier).toEqual([]);
   });
 });

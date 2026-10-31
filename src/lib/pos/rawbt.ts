@@ -1,4 +1,7 @@
+import type { Shift } from "@/types/database.types";
+
 import type { Receipt } from "./receipt";
+import type { ShiftReport } from "./shift-report";
 
 // RawBT is the Android bridge between the PWA and an ESC/POS printer.
 // The browser cannot open the printer's TCP port directly.
@@ -249,6 +252,128 @@ export function printReceiptToRawBt(
 ): boolean {
   const receiptBytes = Array.from(receiptEscPos(receipt, copies));
   return send(openDrawer ? [...OPEN_DRAWER, ...receiptBytes] : receiptBytes);
+}
+
+function formatShiftWhen(value: string | null | undefined): string {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString("en-GB", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+}
+
+// one copy. the sheet that goes in the drawer with the money at close.
+export function shiftReportEscPos(
+  shift: Shift,
+  report: ShiftReport,
+): Uint8Array {
+  const bytes = [ESC, 0x40];
+
+  bytes.push(ESC, 0x61, 0x01, ESC, 0x45, 0x01);
+  addText(bytes, "SEVEN | DEGREES");
+  bytes.push(ESC, 0x45, 0x00);
+  addCentered(bytes, "DAILY SALES");
+  addText(bytes);
+
+  addText(bytes, padColumns("Opened by", shift.opened_by_name));
+  addText(bytes, padColumns("Start", formatShiftWhen(shift.opened_at)));
+  addText(bytes, padColumns("End", formatShiftWhen(shift.closed_at)));
+  addText(bytes, "-".repeat(RECEIPT_COLUMNS));
+
+  addText(bytes, padColumns("Net sales", money(report.salesTotal)));
+  addText(bytes, padColumns("Transactions", String(report.orderCount)));
+  addText(bytes, padColumns("Avg ticket", money(report.averageTicket)));
+
+  if (report.cancelledCount > 0) {
+    addText(bytes, "-".repeat(RECEIPT_COLUMNS));
+    addText(
+      bytes,
+      padColumns(
+        `Cancel (${report.cancelledCount})`,
+        money(report.cancelledAmount),
+      ),
+    );
+  }
+
+  if (report.byCategory.length > 0) {
+    addText(bytes, "-".repeat(RECEIPT_COLUMNS));
+    addCentered(bytes, "BY CATEGORY");
+    for (const row of report.byCategory) {
+      addText(bytes, padColumns(row.label, money(row.amount)));
+    }
+  }
+
+  if (report.byPayment.length > 0) {
+    addText(bytes, "-".repeat(RECEIPT_COLUMNS));
+    addCentered(bytes, "REVENUE");
+    for (const row of report.byPayment) {
+      addText(
+        bytes,
+        padColumns(`${row.label} (${row.count})`, money(row.amount)),
+      );
+    }
+  }
+
+  if (report.byCashier.length > 1) {
+    addText(bytes, "-".repeat(RECEIPT_COLUMNS));
+    addCentered(bytes, "BY CASHIER");
+    for (const row of report.byCashier) {
+      addText(
+        bytes,
+        padColumns(`${row.name} (${row.count})`, money(row.amount)),
+      );
+    }
+  }
+
+  addText(bytes, "-".repeat(RECEIPT_COLUMNS));
+  addText(bytes, padColumns("Opening float", money(report.openingFloat)));
+  addText(bytes, padColumns("Cash sales", money(report.cashSales)));
+  addText(bytes, padColumns("Expected cash", money(report.expectedCash)));
+  addText(
+    bytes,
+    padColumns(
+      "Counted",
+      report.countedCash === null ? "Not counted" : money(report.countedCash),
+    ),
+  );
+
+  if (report.variance !== null) {
+    const label =
+      report.variance === 0
+        ? "Balanced"
+        : report.variance < 0
+          ? "Short"
+          : "Over";
+    addText(
+      bytes,
+      padColumns(label, money(Math.abs(report.variance))),
+    );
+  }
+
+  if (
+    shift.closed_by_name &&
+    shift.closed_by_name !== shift.opened_by_name
+  ) {
+    addText(bytes, padColumns("Closed by", shift.closed_by_name));
+  }
+
+  addText(bytes);
+  bytes.push(...FEED_AND_CUT);
+
+  return Uint8Array.from(bytes);
+}
+
+export function printShiftReportToRawBt(
+  shift: Shift,
+  report: ShiftReport,
+): boolean {
+  return send(Array.from(shiftReportEscPos(shift, report)));
 }
 
 export function openCashDrawer(): boolean {
