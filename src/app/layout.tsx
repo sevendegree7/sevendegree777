@@ -1,60 +1,123 @@
 import type { Metadata, Viewport } from "next";
-import {
-  Cormorant_Garamond,
-  Fraunces,
-  IBM_Plex_Mono,
-  IBM_Plex_Sans,
-  IBM_Plex_Sans_Arabic,
-} from "next/font/google";
+import localFont from "next/font/local";
 
 import { ServiceWorker } from "@/components/service-worker";
 import { PREFERENCES_BOOT_SCRIPT } from "@/lib/ui/preferences";
 
 import "./globals.css";
 
-// the four faces from the brand book. all self hosted by next/font, which
-// matters more here than anywhere else: a truck with no internet still has to
-// render in the right type.
+// brand faces live in src/app/fonts. next/font/google is intentionally not
+// used: next 16 turbopack breaks when google returns a kit url with &, and a
+// truck with no internet must still render in the right type.
 
-// display - headlines and the mark
-const fraunces = Fraunces({
+const fraunces = localFont({
   variable: "--font-fraunces",
-  subsets: ["latin"],
   display: "swap",
+  src: [
+    {
+      path: "./fonts/fraunces-normal-400.woff2",
+      weight: "400",
+      style: "normal",
+    },
+    {
+      path: "./fonts/fraunces-normal-600.woff2",
+      weight: "600",
+      style: "normal",
+    },
+    {
+      path: "./fonts/fraunces-normal-700.woff2",
+      weight: "700",
+      style: "normal",
+    },
+  ],
 });
 
-// the italic accent line, used for the tagline and little else
-const cormorant = Cormorant_Garamond({
+const cormorant = localFont({
   variable: "--font-cormorant",
-  subsets: ["latin"],
-  weight: ["400", "500"],
-  style: ["italic", "normal"],
   display: "swap",
+  src: [
+    {
+      path: "./fonts/cormorant-normal-400.woff2",
+      weight: "400",
+      style: "normal",
+    },
+    {
+      path: "./fonts/cormorant-normal-500.woff2",
+      weight: "500",
+      style: "normal",
+    },
+    {
+      path: "./fonts/cormorant-italic-400.woff2",
+      weight: "400",
+      style: "italic",
+    },
+    {
+      path: "./fonts/cormorant-italic-500.woff2",
+      weight: "500",
+      style: "italic",
+    },
+  ],
 });
 
-// body
-const plexSans = IBM_Plex_Sans({
+const plexSans = localFont({
   variable: "--font-plex-sans",
-  subsets: ["latin"],
-  weight: ["400", "500", "600"],
   display: "swap",
+  src: [
+    {
+      path: "./fonts/plex-sans-normal-400.woff2",
+      weight: "400",
+      style: "normal",
+    },
+    {
+      path: "./fonts/plex-sans-normal-500.woff2",
+      weight: "500",
+      style: "normal",
+    },
+    {
+      path: "./fonts/plex-sans-normal-600.woff2",
+      weight: "600",
+      style: "normal",
+    },
+  ],
 });
 
-// arabic body, same family so a language switch does not change the texture
-const plexArabic = IBM_Plex_Sans_Arabic({
+const plexArabic = localFont({
   variable: "--font-plex-arabic",
-  subsets: ["arabic"],
-  weight: ["400", "500", "600"],
   display: "swap",
+  src: [
+    {
+      path: "./fonts/plex-arabic-normal-400.woff2",
+      weight: "400",
+      style: "normal",
+    },
+    {
+      path: "./fonts/plex-arabic-normal-500.woff2",
+      weight: "500",
+      style: "normal",
+    },
+    {
+      path: "./fonts/plex-arabic-normal-600.woff2",
+      weight: "600",
+      style: "normal",
+    },
+  ],
 });
 
-// labels, ticket numbers and money. figures line up in a column, which is the
-// whole reason a till wants a mono face.
-const plexMono = IBM_Plex_Mono({
+const plexMono = localFont({
   variable: "--font-plex-mono",
-  subsets: ["latin"],
-  weight: ["500", "600"],
   display: "swap",
+  src: [
+    {
+      path: "./fonts/plex-mono-normal-500.woff2",
+      weight: "500",
+      style: "normal",
+    },
+    {
+      path: "./fonts/plex-mono-normal-600.woff2",
+      weight: "600",
+      style: "normal",
+    },
+  ],
 });
 
 export const metadata: Metadata = {
