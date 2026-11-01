@@ -30,7 +30,7 @@ describe("offline daily ticket counter", () => {
     ).toEqual({ date: "2026-08-05", number: 13 });
   });
 
-  it("starts from one again at midnight in Egypt", () => {
+  it("starts from one again at midnight in Egypt when no shift date is pinned", () => {
     expect(
       nextLocalTicketNumber(new Date("2026-08-05T20:59:59.000Z")),
     ).toEqual({ date: "2026-08-05", number: 1 });
@@ -38,5 +38,16 @@ describe("offline daily ticket counter", () => {
     expect(
       nextLocalTicketNumber(new Date("2026-08-05T21:00:00.000Z")),
     ).toEqual({ date: "2026-08-06", number: 1 });
+  });
+
+  it("keeps numbering on the open shift's start day across midnight", () => {
+    primeTicketCounter("2026-08-05", 40);
+
+    expect(
+      nextLocalTicketNumber(
+        new Date("2026-08-05T21:30:00.000Z"),
+        "2026-08-05",
+      ),
+    ).toEqual({ date: "2026-08-05", number: 41 });
   });
 });

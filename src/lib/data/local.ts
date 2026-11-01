@@ -251,7 +251,12 @@ export function createLocalSource(): DataSource {
       });
       const orderId = newOrderId();
       const takenAt = new Date().toISOString();
-      const ticket = nextLocalTicketNumber(new Date(takenAt));
+      // keep numbering on the open shift's start day so midnight does not
+      // restart tickets while the same drawer is still open.
+      const ticket = nextLocalTicketNumber(
+        new Date(takenAt),
+        input.ticketDate ?? null,
+      );
 
       const items: OrderItem[] = pricedLines.map((line) => ({
         id: newOrderId(),
@@ -293,10 +298,9 @@ export function createLocalSource(): DataSource {
         // but the paper is printed now, so the name is carried from the till.
         // the upload overwrites it with the one on the session's profile.
         created_by_name: input.cashierName ?? null,
-        // no shift on the tablet. the upload attaches the sale to whichever
-        // drawer is open when it lands, which is the honest answer - a sale
-        // taken with no internet has no shift of its own to belong to.
-        shift_id: null,
+        // stamp the drawer that was open when the sale was taken. upload keeps
+        // that shift even if it has closed by the time the tablet reconnects.
+        shift_id: input.shiftId?.trim() || null,
         customer_name: customerName,
         customer_phone: (input.customerPhone ?? "").trim() || null,
         // stock is pulled by the server on upload, never here

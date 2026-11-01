@@ -22,12 +22,19 @@ export function primeTicketCounter(day: string, highestNumber: number): void {
 }
 
 // one tablet owns offline sales, so this synchronous local increment is the
-// visible 1..n sequence until the same number is reserved in postgres on sync
-export function nextLocalTicketNumber(now = new Date()): {
+// visible 1..n sequence until the same number is reserved in postgres on sync.
+//
+// `businessDate` is the truck day the OPEN SHIFT started on. a shift that
+// crosses midnight keeps that same date so tickets do not restart at 1 while
+// the same drawer is still open.
+export function nextLocalTicketNumber(
+  now = new Date(),
+  businessDate?: string | null,
+): {
   date: string;
   number: number;
 } {
-  const date = truckDayKey(now);
+  const date = businessDate?.trim() || truckDayKey(now);
   const number = read(date) + 1;
   window.localStorage.setItem(keyFor(date), String(number));
   return { date, number };

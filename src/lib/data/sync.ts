@@ -177,6 +177,7 @@ async function pushOne(record: LocalOrder, clientId: string): Promise<boolean> {
       orderId: record.order.id,
       ticketDate: record.order.ticket_date,
       ticketNumber: record.order.ticket_number,
+      shiftId: record.order.shift_id,
       kdsEnabled: record.order.status !== "completed",
       orderType: record.order.order_type,
       // whatever the cashier picked offline, including card, instapay and agel

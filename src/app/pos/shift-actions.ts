@@ -1,5 +1,6 @@
 "use server";
 
+import { mergeShiftWindowOrders } from "@/lib/pos/shift-orders";
 import { buildShiftReport, type ShiftReport } from "@/lib/pos/shift-report";
 import { EMPTY_TODAY_SALES, type TodaySales } from "@/lib/pos/today-sales";
 import { createClient } from "@/lib/supabase/server";
@@ -53,15 +54,35 @@ async function summarise(
   supabase: Awaited<ReturnType<typeof createClient>>,
   shift: Shift,
 ): Promise<ShiftSummary> {
-  const { data: orders } = await supabase
-    .from("orders")
-    .select(
-      "id, total_amount, payment_method, status, created_by_name, is_diyafa",
-    )
-    .eq("shift_id", shift.id)
-    .is("archived_at", null);
+  // every sale on this drawer session, open → close. midnight does not split
+  // it. also pull unattached rows in the same window (offline uploads that
+  // never got a shift_id) so a close report cannot quietly drop half a night.
+  const windowEnd = shift.closed_at ?? new Date().toISOString();
+  const orderCols =
+    "id, shift_id, created_at, total_amount, payment_method, status, created_by_name, is_diyafa";
 
-  const list = orders ?? [];
+  const [{ data: onShift }, { data: orphans }] = await Promise.all([
+    supabase
+      .from("orders")
+      .select(orderCols)
+      .eq("shift_id", shift.id)
+      .is("archived_at", null),
+    supabase
+      .from("orders")
+      .select(orderCols)
+      .is("shift_id", null)
+      .is("archived_at", null)
+      .gte("created_at", shift.opened_at)
+      .lte("created_at", windowEnd),
+  ]);
+
+  const list = mergeShiftWindowOrders({
+    shiftId: shift.id,
+    openedAt: shift.opened_at,
+    closedAt: shift.closed_at,
+    onShift: onShift ?? [],
+    orphans: orphans ?? [],
+  });
   const orderIds = list.map((order) => order.id);
 
   const { data: itemRows } =

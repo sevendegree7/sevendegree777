@@ -1,6 +1,6 @@
 import { RoleShell } from "@/components/role-shell";
 import type { MenuSnapshot } from "@/lib/data/types";
-import { startOfTruckDayIso } from "@/lib/reports/dates";
+import { truckDayKey } from "@/lib/reports/dates";
 import { createClient } from "@/lib/supabase/server";
 import type { AppSettings } from "@/types/database.types";
 
@@ -19,6 +19,19 @@ export default async function PosPage() {
     data: { user },
   } = await supabase.auth.getUser();
 
+  // drawer first so ticket priming can follow the open shift, not midnight.
+  const shift = await currentShift();
+
+  const ticketQuery = shift.shift
+    ? supabase
+        .from("orders")
+        .select("ticket_date, ticket_number")
+        .eq("shift_id", shift.shift.id)
+        .order("ticket_number", { ascending: false })
+        .limit(1)
+        .maybeSingle()
+    : Promise.resolve({ data: null });
+
   const [
     categoriesResult,
     productsResult,
@@ -26,7 +39,6 @@ export default async function PosPage() {
     settingsResult,
     ticketResult,
     profileResult,
-    shift,
     salesToday,
   ] = await Promise.all([
     supabase.from("categories").select("*").order("sort_order"),
@@ -38,13 +50,7 @@ export default async function PosPage() {
       .order("sort_order"),
     supabase.from("modifiers").select("*").order("extra_price"),
     supabase.from("app_settings").select("*").eq("id", "global").maybeSingle(),
-    supabase
-      .from("orders")
-      .select("ticket_date, ticket_number")
-      .gte("created_at", startOfTruckDayIso())
-      .order("ticket_number", { ascending: false })
-      .limit(1)
-      .maybeSingle(),
+    ticketQuery,
     // the role comes with the name: voiding and editing a sale are admin-only,
     // and the till hides those buttons rather than offering a cashier a button
     // that will only ever answer "no".
@@ -55,11 +61,12 @@ export default async function PosPage() {
           .eq("id", user.id)
           .maybeSingle()
       : Promise.resolve({ data: null }),
-    // whoever has the drawer right now. answers with nulls rather than throwing
-    // when nothing is open, so the bar renders either way.
-    currentShift(),
     todaySales(),
   ]);
+
+  const shiftTicketDate = shift.shift
+    ? truckDayKey(shift.shift.opened_at)
+    : null;
 
   const loadError =
     categoriesResult.error ?? productsResult.error ?? modifiersResult.error;
@@ -86,7 +93,9 @@ export default async function PosPage() {
       <PosScreen
         initialMenu={initialMenu}
         initialSettings={initialSettings}
-        initialTicketDate={ticketResult.data?.ticket_date ?? null}
+        initialTicketDate={
+          ticketResult.data?.ticket_date ?? shiftTicketDate
+        }
         initialTicketNumber={ticketResult.data?.ticket_number ?? 0}
         cashierName={profileResult.data?.name ?? null}
         canVoid={profileResult.data?.role === "admin"}

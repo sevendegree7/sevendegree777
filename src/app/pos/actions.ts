@@ -16,6 +16,7 @@ import {
   priceSale,
   type DiscountInput,
 } from "@/lib/pos/pricing";
+import { truckDayKey } from "@/lib/reports/dates";
 import type {
   BoxContent,
   DiscountKind,
@@ -47,9 +48,13 @@ export type CheckoutInput = {
   // under them when the sale finally goes up.
   orderId?: string;
   // offline sales reserve the visible number they already showed. online
-  // sales leave these out and postgres allocates the next Egypt-day number.
+  // sales leave these out and postgres allocates the next number for the
+  // open shift's start day (not "today" after midnight).
   ticketDate?: string;
   ticketNumber?: number;
+  // drawer session this sale belongs to. offline stamps it when the sale is
+  // taken; on upload the server keeps that shift even if it has since closed.
+  shiftId?: string | null;
   // used only by the local source. the server always reads the real setting.
   kdsEnabled?: boolean;
   // also local-only: who is signed in at the till, so a sale rung with no
@@ -216,10 +221,13 @@ export async function createOrder(
     return { ok: false, message: "pick a payment method" };
   }
 
+  // ticketDate alone is allowed: the open shift's start day, so numbering
+  // does not restart at midnight. ticketNumber without a date is not.
   if (
-    (input.ticketDate === undefined) !== (input.ticketNumber === undefined) ||
-    (input.ticketNumber !== undefined &&
-      (!Number.isInteger(input.ticketNumber) || input.ticketNumber < 1))
+    input.ticketNumber !== undefined &&
+    (input.ticketDate === undefined ||
+      !Number.isInteger(input.ticketNumber) ||
+      input.ticketNumber < 1)
   ) {
     return { ok: false, message: "this sale has an invalid ticket number" };
   }
@@ -400,17 +408,9 @@ export async function createOrder(
   // own price.
   const lineTotal = cartTotal(pricedLines);
 
-  // These reads do not depend on each other. Running them together removes
-  // two network round trips from every online checkout.
-  const [
-    { data: allocated, error: ticketError },
-    { data: settings },
-    { data: openShift },
-  ] = await Promise.all([
-    supabase.rpc("allocate_ticket_number", {
-      p_ticket_date: input.ticketDate,
-      p_requested_number: input.ticketNumber ?? null,
-    }),
+  // drawer first, then ticket. ticket dates follow the open shift's start day
+  // so a session that crosses midnight keeps one continuous sequence.
+  const [{ data: settings }, { data: openShift }] = await Promise.all([
     supabase
       .from("app_settings")
       .select("*")
@@ -418,10 +418,80 @@ export async function createOrder(
       .maybeSingle(),
     supabase
       .from("shifts")
-      .select("id")
+      .select("id, opened_at")
       .is("closed_at", null)
       .maybeSingle(),
   ]);
+
+  // which drawer this sale belongs to.
+  //
+  // a missing shift never stops a sale. if nobody opened one - first sale of
+  // the morning, or a cashier who went straight to the screen - one is opened
+  // for them with a zero float, so the money is still attributed to somebody.
+  // if even that fails the sale goes through unattached rather than not at all.
+  //
+  // offline uploads send the shift they were taken under. keep that even if
+  // the drawer has since closed, so a late sync cannot move last night's
+  // money onto this morning's shift.
+  let shiftId: string | null = null;
+  let shiftOpenedAt: string | null = null;
+  {
+    const preferredId = input.shiftId?.trim() || null;
+    if (preferredId) {
+      const { data: preferred } = await supabase
+        .from("shifts")
+        .select("id, opened_at")
+        .eq("id", preferredId)
+        .maybeSingle();
+      if (preferred) {
+        shiftId = preferred.id;
+        shiftOpenedAt = preferred.opened_at;
+      }
+    }
+
+    if (!shiftId && openShift) {
+      shiftId = openShift.id;
+      shiftOpenedAt = openShift.opened_at;
+    }
+
+    if (!shiftId) {
+      const { data: started } = await supabase
+        .from("shifts")
+        .insert({ opened_by: user.id, opened_by_name: profile.name })
+        .select("id, opened_at")
+        .maybeSingle();
+
+      if (started) {
+        shiftId = started.id;
+        shiftOpenedAt = started.opened_at;
+      } else {
+        // somebody else opened one in the moment between the read and the
+        // insert. take theirs rather than leaving the sale unattached.
+        const { data: raced } = await supabase
+          .from("shifts")
+          .select("id, opened_at")
+          .is("closed_at", null)
+          .maybeSingle();
+
+        shiftId = raced?.id ?? null;
+        shiftOpenedAt = raced?.opened_at ?? null;
+      }
+    }
+  }
+
+  const ticketDate =
+    input.ticketDate ??
+    (shiftOpenedAt
+      ? truckDayKey(new Date(shiftOpenedAt))
+      : truckDayKey(new Date()));
+
+  const { data: allocated, error: ticketError } = await supabase.rpc(
+    "allocate_ticket_number",
+    {
+      p_ticket_date: ticketDate,
+      p_requested_number: input.ticketNumber ?? null,
+    },
+  );
 
   if (ticketError || !allocated) {
     return {
@@ -430,15 +500,6 @@ export async function createOrder(
         "could not allocate a ticket number. run the launch migration and try again.",
     };
   }
-
-  const ticketDate =
-    input.ticketDate ??
-    new Intl.DateTimeFormat("en-CA", {
-      timeZone: "Africa/Cairo",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).format(new Date());
 
   const initialStatus = settings?.kds_enabled ? "pending" : "completed";
 
@@ -451,39 +512,6 @@ export async function createOrder(
     isDiyafa,
   });
   const total = priced.payable;
-
-  // which drawer this sale belongs to.
-  //
-  // a missing shift never stops a sale. if nobody opened one - first sale of
-  // the morning, or a cashier who went straight to the screen - one is opened
-  // for them with a zero float, so the money is still attributed to somebody.
-  // if even that fails the sale goes through unattached rather than not at all.
-  let shiftId: string | null = null;
-  {
-    if (openShift) {
-      shiftId = openShift.id;
-    } else {
-      const { data: started } = await supabase
-        .from("shifts")
-        .insert({ opened_by: user.id, opened_by_name: profile.name })
-        .select("id")
-        .maybeSingle();
-
-      if (started) {
-        shiftId = started.id;
-      } else {
-        // somebody else opened one in the moment between the read and the
-        // insert. take theirs rather than leaving the sale unattached.
-        const { data: raced } = await supabase
-          .from("shifts")
-          .select("id")
-          .is("closed_at", null)
-          .maybeSingle();
-
-        shiftId = raced?.id ?? null;
-      }
-    }
-  }
 
   const { data: order, error: orderError } = await supabase
     .from("orders")

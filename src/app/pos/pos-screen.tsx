@@ -40,6 +40,7 @@ import type { ShiftReport } from "@/lib/pos/shift-report";
 import { type TodaySales } from "@/lib/pos/today-sales";
 import { readTaxSettings } from "@/lib/pos/tax";
 import { primeTicketCounter } from "@/lib/pos/ticket-counter";
+import { truckDayKey } from "@/lib/reports/dates";
 import type {
   AppSettings,
   BoxContent,
@@ -547,6 +548,10 @@ export function PosScreen({
         // app_settings and ignores this - it is here so a sale rung with no
         // internet still charges and prints the same tax as one with.
         taxSettings,
+        // pin tickets and ownership to the open drawer. midnight must not
+        // start a new sequence or move a late sync onto the next shift.
+        shiftId: shift?.id ?? null,
+        ticketDate: shift ? truckDayKey(shift.opened_at) : undefined,
         customerName: customerName.trim() ? customerName.trim() : null,
         customerPhone: customerPhone.trim() ? customerPhone.trim() : null,
         discountKind: isDiyafa ? null : discountKind,
@@ -738,6 +743,10 @@ export function PosScreen({
                   }
                 : { orderCount: 0, salesTotal: 0 },
             );
+            // pin the offline counter to this drawer's start day immediately
+            if (next.shift) {
+              primeTicketCounter(truckDayKey(next.shift.opened_at), 0);
+            }
           }}
         />
 
