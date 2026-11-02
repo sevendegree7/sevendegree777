@@ -997,6 +997,74 @@ export async function settleAgelDebt(input: {
   };
 }
 
+// correct how a sale was paid. till cashiers cannot do this — only admin,
+// from the orders screen, when someone rang cash instead of card (or similar).
+export async function updateOrderPaymentMethod(input: {
+  orderId: string;
+  paymentMethod: string;
+}): Promise<ActionResult> {
+  const { supabase, error } = await requireAdmin();
+  if (error) return { ok: false, message: error };
+
+  const method = input.paymentMethod.trim();
+  if (
+    method !== "cash" &&
+    method !== "card" &&
+    method !== "instapay" &&
+    method !== "agel"
+  ) {
+    return { ok: false, message: "pick cash, card, instapay, or agel" };
+  }
+
+  if (!input.orderId) {
+    return { ok: false, message: "order not found" };
+  }
+
+  const { data: order, error: lookupError } = await supabase
+    .from("orders")
+    .select("id, payment_method, is_diyafa, agel_settled_at")
+    .eq("id", input.orderId)
+    .is("archived_at", null)
+    .maybeSingle();
+
+  if (lookupError) return { ok: false, message: lookupError.message };
+  if (!order) return { ok: false, message: "order not found" };
+
+  if (order.payment_method === method) {
+    return { ok: true, message: "payment already set" };
+  }
+
+  // leaving agel clears any settle stamp; becoming agel starts owing again.
+  const patch: {
+    payment_method: typeof method;
+    agel_settled_at?: null;
+    agel_settled_by?: null;
+    agel_settled_payment_method?: null;
+  } = { payment_method: method };
+
+  if (method === "agel" || order.payment_method === "agel") {
+    patch.agel_settled_at = null;
+    patch.agel_settled_by = null;
+    patch.agel_settled_payment_method = null;
+  }
+
+  const { error: updateError } = await supabase
+    .from("orders")
+    .update(patch)
+    .eq("id", input.orderId)
+    .is("archived_at", null);
+
+  if (updateError) return { ok: false, message: updateError.message };
+
+  revalidatePath("/admin/orders");
+  revalidatePath("/admin/reports");
+  revalidatePath("/admin/debts");
+  revalidatePath("/admin");
+  revalidatePath("/pos");
+
+  return { ok: true, message: `payment set to ${method}` };
+}
+
 // void one or more tickets from admin > orders. stock is returned the same way
 // as voiding from the till.
 export async function cancelAdminOrders(

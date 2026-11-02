@@ -6,12 +6,20 @@ import { useMemo, useState, useTransition } from "react";
 import {
   cancelAdminOrders,
   purgeAllOrders,
+  updateOrderPaymentMethod,
 } from "@/app/admin/actions";
 import { ReceiptView } from "@/app/pos/components/receipt-view";
 import { ticketNumber, type KitchenOrder } from "@/lib/kds/orders";
 import { formatMoney } from "@/lib/pos/money";
 import { buildReceipt, formatTruckTime } from "@/lib/pos/receipt";
-import type { OrderStatus } from "@/types/database.types";
+import type { OrderStatus, PaymentMethod } from "@/types/database.types";
+
+const PAYMENT_OPTIONS: { value: PaymentMethod; label: string }[] = [
+  { value: "cash", label: "Cash" },
+  { value: "card", label: "Visa" },
+  { value: "instapay", label: "InstaPay" },
+  { value: "agel", label: "Agel" },
+];
 
 const STATUS_STYLE: Record<OrderStatus, string> = {
   pending: "bg-warn/15 text-warn",
@@ -160,9 +168,48 @@ export function OrdersPanel({ orders }: OrdersPanelProps) {
                         {order.status}
                       </span>
                     </td>
-                    <td className="px-4 py-3 capitalize">
-                      {order.payment_method ?? "—"}
-                      {order.is_diyafa ? " · diyafa" : null}
+                    <td className="px-4 py-3">
+                      <div className="flex flex-col gap-1">
+                        <select
+                          value={order.payment_method ?? ""}
+                          disabled={pending || order.is_diyafa === true}
+                          onChange={(event) => {
+                            const paymentMethod = event.target.value;
+                            if (
+                              !paymentMethod ||
+                              paymentMethod === order.payment_method
+                            ) {
+                              return;
+                            }
+                            startTransition(async () => {
+                              const result = await updateOrderPaymentMethod({
+                                orderId: order.id,
+                                paymentMethod,
+                              });
+                              setMessage(
+                                result.ok
+                                  ? (result.message ?? "saved")
+                                  : result.message,
+                              );
+                              if (result.ok) refresh();
+                            });
+                          }}
+                          className="rounded-lg border border-line bg-surface px-2 py-1.5 text-xs capitalize disabled:opacity-50"
+                          aria-label={`Payment for ticket ${ticketNumber(order)}`}
+                        >
+                          {!order.payment_method ? (
+                            <option value="">—</option>
+                          ) : null}
+                          {PAYMENT_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                        {order.is_diyafa ? (
+                          <span className="text-xs text-muted">diyafa</span>
+                        ) : null}
+                      </div>
                     </td>
                     <td className="px-4 py-3 text-end font-mono font-medium">
                       {formatMoney(Number(order.total_amount))}
