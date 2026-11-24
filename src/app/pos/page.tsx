@@ -37,6 +37,7 @@ export default async function PosPage() {
     productsResult,
     modifiersResult,
     settingsResult,
+    stockResult,
     ticketResult,
     profileResult,
     salesToday,
@@ -49,7 +50,15 @@ export default async function PosPage() {
       .eq("is_available", true)
       .order("sort_order"),
     supabase.from("modifiers").select("*").order("extra_price"),
-    supabase.from("app_settings").select("*").eq("id", "global").maybeSingle(),
+    // never select waste_pin into the till HTML — PIN stays server-side only
+    supabase
+      .from("app_settings")
+      .select(
+        "id, kds_enabled, inventory_mode, receipt_copies, tax_enabled, tax_label, tax_rate, tax_mode, updated_at",
+      )
+      .eq("id", "global")
+      .maybeSingle(),
+    supabase.from("product_stock").select("*"),
     ticketQuery,
     // the role comes with the name: voiding and editing a sale are admin-only,
     // and the till hides those buttons rather than offering a cashier a button
@@ -88,6 +97,12 @@ export default async function PosPage() {
     updated_at: new Date().toISOString(),
   };
 
+  // finished pieces only — same set admin waste uses. boxes are packs, not pcs.
+  const wasteProducts = (productsResult.data ?? []).filter(
+    (product) =>
+      product.piece_count === null || product.piece_count === undefined,
+  );
+
   return (
     <RoleShell title="POS" roleLabel="Cashier">
       <PosScreen
@@ -102,6 +117,8 @@ export default async function PosPage() {
         initialShift={shift.shift}
         initialShiftReport={shift.report}
         initialTodaySales={salesToday}
+        wasteProducts={wasteProducts}
+        wasteStock={stockResult.data ?? []}
       />
     </RoleShell>
   );

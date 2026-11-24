@@ -12,10 +12,11 @@ import {
   summariseTodaySales,
   type TodaySales,
 } from "@/lib/pos/today-sales";
-import type { Shift } from "@/types/database.types";
+import type { Product, ProductStock, Shift } from "@/types/database.types";
 
 import { closeShift, openShift } from "../shift-actions";
 import { ShiftReportView } from "./shift-report-view";
+import { WasteDialog } from "./waste-dialog";
 
 type ShiftBarProps = {
   shift: Shift | null;
@@ -24,6 +25,9 @@ type ShiftBarProps = {
   // sales are not blocked when this is offline - the till keeps selling and the
   // sale attaches to whichever drawer is open when it uploads
   offline: boolean;
+  wasteProducts: Product[];
+  wasteStock: ProductStock[];
+  onWasteLogged: (productId: string, quantity: number) => void;
   onChanged: (next: { shift: Shift | null; report: ShiftReport | null }) => void;
 };
 
@@ -36,6 +40,9 @@ export function ShiftBar({
   report,
   today,
   offline,
+  wasteProducts,
+  wasteStock,
+  onWasteLogged,
   onChanged,
 }: ShiftBarProps) {
   const { t } = useTranslate();
@@ -55,6 +62,7 @@ export function ShiftBar({
     return mergeTodaySales(base, waiting);
   }, [shift, today, localOrders]);
   const [dialog, setDialog] = useState<"open" | "close" | null>(null);
+  const [wasteOpen, setWasteOpen] = useState(false);
   const [amount, setAmount] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [printing, setPrinting] = useState<{
@@ -100,6 +108,17 @@ export function ShiftBar({
     return Number.isFinite(value) && value >= 0 ? value : null;
   }
 
+  const wasteButton = (
+    <button
+      type="button"
+      onClick={() => setWasteOpen(true)}
+      disabled={offline}
+      className="rounded-full border border-line px-3 py-1.5 font-medium text-ink disabled:opacity-40"
+    >
+      {t("shift.waste")}
+    </button>
+  );
+
   return (
     <>
       {shift ? (
@@ -114,35 +133,41 @@ export function ShiftBar({
           <span className="text-muted">
             {t("shift.onShift", { name: shift.opened_by_name })}
           </span>
-          <button
-            type="button"
-            onClick={() => {
-              setDialog("close");
-              setAmount("");
-              setError(null);
-            }}
-            disabled={offline}
-            className="ms-auto rounded-full border border-line bg-navy px-3 py-1.5 font-medium text-cream disabled:opacity-40 dark:bg-accent-surface dark:text-accent-ink"
-          >
-            {t("shift.close")}
-          </button>
+          <div className="ms-auto flex flex-wrap items-center gap-2">
+            {wasteButton}
+            <button
+              type="button"
+              onClick={() => {
+                setDialog("close");
+                setAmount("");
+                setError(null);
+              }}
+              disabled={offline}
+              className="rounded-full border border-line bg-navy px-3 py-1.5 font-medium text-cream disabled:opacity-40 dark:bg-accent-surface dark:text-accent-ink"
+            >
+              {t("shift.close")}
+            </button>
+          </div>
         </div>
       ) : (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl bg-warn/15 px-4 py-2 text-sm">
           <span className="font-medium text-warn">{t("shift.none")}</span>
           <span className="text-muted">{t("shift.noneHint")}</span>
-          <button
-            type="button"
-            onClick={() => {
-              setDialog("open");
-              setAmount("");
-              setError(null);
-            }}
-            disabled={offline}
-            className="ms-auto rounded-full border border-warn px-3 py-1.5 font-medium text-warn disabled:opacity-40"
-          >
-            {t("shift.open")}
-          </button>
+          <div className="ms-auto flex flex-wrap items-center gap-2">
+            {wasteButton}
+            <button
+              type="button"
+              onClick={() => {
+                setDialog("open");
+                setAmount("");
+                setError(null);
+              }}
+              disabled={offline}
+              className="rounded-full border border-warn px-3 py-1.5 font-medium text-warn disabled:opacity-40"
+            >
+              {t("shift.open")}
+            </button>
+          </div>
         </div>
       )}
 
@@ -230,6 +255,15 @@ export function ShiftBar({
             </div>
           </div>
         </div>
+      ) : null}
+
+      {wasteOpen ? (
+        <WasteDialog
+          products={wasteProducts}
+          stock={wasteStock}
+          onLogged={onWasteLogged}
+          onClose={() => setWasteOpen(false)}
+        />
       ) : null}
 
       {printing ? (

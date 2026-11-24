@@ -76,6 +76,22 @@ describe("buildShiftReport", () => {
     expect(report.variance).toBeNull();
   });
 
+  it("sums discounts on paid tickets without changing net sales", () => {
+    const report = buildShiftReport({
+      orders: [
+        order({ total_amount: 180, discount_amount: 20 }),
+        order({ total_amount: 100, discount_amount: 0 }),
+        order({ total_amount: 50, status: "cancelled", discount_amount: 10 }),
+      ],
+      openingFloat: 0,
+      countedCash: null,
+    });
+
+    expect(report.salesTotal).toBe(280);
+    expect(report.discountTotal).toBe(20);
+    expect(report.discountedCount).toBe(1);
+  });
+
   it("counts cancelled tickets without putting them in the takings", () => {
     const report = buildShiftReport({
       orders: [

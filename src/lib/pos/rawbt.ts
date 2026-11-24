@@ -289,6 +289,13 @@ export function shiftReportEscPos(
   addText(bytes, padColumns("Net sales", money(report.salesTotal)));
   addText(bytes, padColumns("Transactions", String(report.orderCount)));
   addText(bytes, padColumns("Avg ticket", money(report.averageTicket)));
+  if (report.discountTotal > 0) {
+    addText(bytes, padColumns("Discounts", money(report.discountTotal)));
+    addText(
+      bytes,
+      padColumns("Discounted", String(report.discountedCount)),
+    );
+  }
 
   if (report.cancelledCount > 0) {
     addText(bytes, "-".repeat(RECEIPT_COLUMNS));

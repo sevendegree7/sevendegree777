@@ -48,6 +48,7 @@ import type {
   OrderType,
   PaymentMethod,
   Product,
+  ProductStock,
   SelectedModifier,
   Shift,
 } from "@/types/database.types";
@@ -83,6 +84,10 @@ type PosScreenProps = {
   initialShift: Shift | null;
   initialShiftReport: ShiftReport | null;
   initialTodaySales: TodaySales;
+  // finished-piece products + stock for till waste (PIN-gated). not the
+  // sellable menu — waste stays available after the shift closes too.
+  wasteProducts: Product[];
+  wasteStock: ProductStock[];
 };
 
 // the message under the header.
@@ -113,6 +118,8 @@ export function PosScreen({
   initialShift,
   initialShiftReport,
   initialTodaySales,
+  wasteProducts,
+  wasteStock: initialWasteStock,
 }: PosScreenProps) {
   // the tax rule as the server last handed it over. read once here rather than
   // in the cart, so the ticket the cashier reads out and the sale that gets
@@ -146,6 +153,7 @@ export function PosScreen({
     initialShiftReport,
   );
   const [salesToday, setSalesToday] = useState<TodaySales>(initialTodaySales);
+  const [wasteStock, setWasteStock] = useState(initialWasteStock);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   // the sale being corrected. the old ticket is not touched until the new one
@@ -481,12 +489,20 @@ export function PosScreen({
     setFeedback(null);
   }
 
+  function clearDiscount() {
+    setDiscountKind(null);
+    setDiscountValue("");
+    setIsDiyafa(false);
+    setDiyafaReason("");
+  }
+
   function cancelEdit() {
     setEditing(null);
     setCart([]);
     setOrderNotes("");
     setCustomerName("");
     setCustomerPhone("");
+    clearDiscount();
     setFeedback(null);
   }
 
@@ -599,10 +615,7 @@ export function PosScreen({
         setOrderNotes("");
         setCustomerName("");
         setCustomerPhone("");
-        setDiscountKind(null);
-        setDiscountValue("");
-        setIsDiyafa(false);
-        setDiyafaReason("");
+        clearDiscount();
         setConfirmOpen(false);
         setEditing(null);
         setSaleSeed(newOrderId());
@@ -732,6 +745,30 @@ export function PosScreen({
           report={shiftReport}
           today={salesToday}
           offline={offline}
+          wasteProducts={wasteProducts}
+          wasteStock={wasteStock}
+          onWasteLogged={(productId, quantity) => {
+            setWasteStock((prev) => {
+              const next = prev.map((row) =>
+                row.product_id === productId
+                  ? {
+                      ...row,
+                      current_stock: Number(row.current_stock) - quantity,
+                    }
+                  : row,
+              );
+              if (next.some((row) => row.product_id === productId)) return next;
+              return [
+                ...next,
+                {
+                  product_id: productId,
+                  current_stock: -quantity,
+                  min_threshold: 0,
+                  updated_at: new Date().toISOString(),
+                },
+              ];
+            });
+          }}
           onChanged={(next) => {
             setShift(next.shift);
             setShiftReport(next.report);
@@ -853,7 +890,10 @@ export function PosScreen({
               current.filter((line) => line.lineId !== lineId),
             )
           }
-          onClear={() => setCart([])}
+          onClear={() => {
+            setCart([]);
+            clearDiscount();
+          }}
           onOrderTypeChange={setOrderType}
           onPaymentMethodChange={setPaymentMethod}
           onOrderNotesChange={setOrderNotes}

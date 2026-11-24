@@ -685,6 +685,8 @@ export async function updateOperatingSettings(input: {
   // through typing 14.5 and the form must not fight the person using it
   taxRate: string;
   taxMode: TaxMode;
+  // shared till waste PIN. empty clears it (waste stays blocked until set).
+  wastePin: string;
 }): Promise<ActionResult> {
   const { supabase, error } = await requireAdmin();
   if (error) return { ok: false, message: error };
@@ -703,6 +705,10 @@ export async function updateOperatingSettings(input: {
 
   const taxLabel = normaliseLabel(input.taxLabel);
   const taxRate = normaliseRate(input.taxRate);
+  const wastePin = input.wastePin.trim();
+  if (wastePin.length > 32) {
+    return { ok: false, message: "waste PIN is too long" };
+  }
 
   // only worth complaining about when they meant to turn it on. saving with
   // tax off and an empty rate is a perfectly ordinary thing to do.
@@ -723,6 +729,7 @@ export async function updateOperatingSettings(input: {
       tax_label: taxLabel,
       tax_rate: taxRate,
       tax_mode: input.taxMode,
+      waste_pin: wastePin.length > 0 ? wastePin : null,
       updated_at: new Date().toISOString(),
     })
     .eq("id", "global");

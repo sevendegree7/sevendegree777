@@ -13,6 +13,7 @@ export type ShiftOrder = {
   status: string;
   created_by_name?: string | null;
   is_diyafa?: boolean | null;
+  discount_amount?: number | null;
 };
 
 export type ShiftLine = {
@@ -51,6 +52,8 @@ export type ShiftReport = {
   cancelledCount: number;
   cancelledAmount: number;
   salesTotal: number;
+  discountTotal: number;
+  discountedCount: number;
   byPayment: ShiftPaymentRow[];
   byCategory: ShiftCategoryRow[];
   // the two cashiers may both have sold during one drawer session - a handover
@@ -104,6 +107,8 @@ export function buildShiftReport(input: {
 
   let salesTotal = 0;
   let cashSales = 0;
+  let discountTotal = 0;
+  let discountedCount = 0;
 
   const liveIds = new Set<string>();
 
@@ -112,6 +117,12 @@ export function buildShiftReport(input: {
 
     const amount = Number(order.total_amount);
     salesTotal = addMoney(salesTotal, amount);
+
+    const discount = Number(order.discount_amount ?? 0);
+    if (discount > 0) {
+      discountTotal = addMoney(discountTotal, discount);
+      discountedCount += 1;
+    }
 
     const pay = order.payment_method ?? "unknown";
     if (pay === "cash") {
@@ -176,6 +187,8 @@ export function buildShiftReport(input: {
     cancelledCount,
     cancelledAmount,
     salesTotal,
+    discountTotal,
+    discountedCount,
     byPayment: [...paymentMap.entries()]
       .map(([key, value]) => ({
         key,

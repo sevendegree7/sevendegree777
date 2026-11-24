@@ -72,6 +72,18 @@ export function ShiftReportView({
               label={t("shift.avgTicket")}
               value={formatMoney(report.averageTicket)}
             />
+            {report.discountTotal > 0 ? (
+              <>
+                <Row
+                  label={t("shift.discountTotal")}
+                  value={formatMoney(report.discountTotal)}
+                />
+                <Row
+                  label={t("shift.discountedOrders")}
+                  value={String(report.discountedCount)}
+                />
+              </>
+            ) : null}
           </div>
 
           {report.cancelledCount > 0 ? (

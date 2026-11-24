@@ -192,6 +192,8 @@ export type AppSettings = {
   // percent, not a fraction. 14 means 14%.
   tax_rate?: number;
   tax_mode?: TaxMode;
+  // shared PIN cashiers type before logging waste on the till. empty = off.
+  waste_pin?: string | null;
   updated_at: string;
 };
 
@@ -561,6 +563,7 @@ export type Database = {
           tax_label?: string;
           tax_rate?: number;
           tax_mode?: TaxMode;
+          waste_pin?: string | null;
           updated_at?: string;
         };
         Update: {
@@ -572,6 +575,7 @@ export type Database = {
           tax_label?: string;
           tax_rate?: number;
           tax_mode?: TaxMode;
+          waste_pin?: string | null;
           updated_at?: string;
         };
         Relationships: [];

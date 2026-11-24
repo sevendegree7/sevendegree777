@@ -59,7 +59,7 @@ async function summarise(
   // never got a shift_id) so a close report cannot quietly drop half a night.
   const windowEnd = shift.closed_at ?? new Date().toISOString();
   const orderCols =
-    "id, shift_id, created_at, total_amount, payment_method, status, created_by_name, is_diyafa";
+    "id, shift_id, created_at, total_amount, payment_method, status, created_by_name, is_diyafa, discount_amount";
 
   const [{ data: onShift }, { data: orphans }] = await Promise.all([
     supabase

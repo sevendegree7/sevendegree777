@@ -108,6 +108,8 @@ describe("daily sales ESC/POS", () => {
       cancelledCount: 1,
       cancelledAmount: 50,
       salesTotal: 410,
+      discountTotal: 40,
+      discountedCount: 1,
       byPayment: [
         { key: "card", label: "Visa", amount: 200, count: 1 },
         { key: "cash", label: "Cash", amount: 210, count: 1 },

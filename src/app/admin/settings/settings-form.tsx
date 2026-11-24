@@ -27,6 +27,7 @@ export function SettingsForm({ settings }: { settings: AppSettings }) {
   // both are states a person passes through on the way to a real rate
   const [taxRate, setTaxRate] = useState(String(settings.tax_rate ?? ""));
   const [taxMode, setTaxMode] = useState<TaxMode>(settings.tax_mode ?? "added");
+  const [wastePin, setWastePin] = useState(settings.waste_pin ?? "");
   const [message, setMessage] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -51,6 +52,7 @@ export function SettingsForm({ settings }: { settings: AppSettings }) {
         taxLabel,
         taxRate,
         taxMode,
+        wastePin,
       });
       setMessage(result.ok ? result.message ?? "saved" : result.message);
     });
@@ -210,6 +212,27 @@ export function SettingsForm({ settings }: { settings: AppSettings }) {
             </p>
           </div>
         ) : null}
+      </section>
+
+      <section className="rounded-2xl bg-raised p-5 shadow-sm">
+        <label className="block text-sm">
+          Waste PIN (till)
+          <input
+            type="password"
+            inputMode="numeric"
+            autoComplete="off"
+            value={wastePin}
+            onChange={(event) => setWastePin(event.target.value)}
+            maxLength={32}
+            placeholder="e.g. 1234"
+            className="mt-2 w-full rounded-xl border border-line bg-surface px-3 py-3 font-mono tracking-widest"
+          />
+        </label>
+        <p className="mt-2 text-sm text-muted">
+          Cashiers must type this before logging waste on the till. Clear it to
+          block till waste until you set one again. Admin waste on this site
+          does not need the PIN.
+        </p>
       </section>
 
       <button
